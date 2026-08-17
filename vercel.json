@@ -1,3 +1,7 @@
 {
-  "version": 2
+  "version": 2,
+  "functions": {
+    "api/recipes.js": { "maxDuration": 30 },
+    "api/identify.js": { "maxDuration": 30 }
+  }
 }
