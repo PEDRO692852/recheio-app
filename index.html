@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recheio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Work+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-deep:#1F2E22;
+    --bg-deep-2:#28392B;
+    --cream:#F7F2E7;
+    --cream-dim:#EDE6D6;
+    --mustard:#E3A72B;
+    --mustard-dark:#8A5F13;
+    --tomato:#C1432B;
+    --tomato-dark:#5C1F14;
+    --teal:#3E7C68;
+    --teal-dark:#1F4436;
+    --ink:#24261F;
+    --ink-soft:#5B5B4F;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg-deep);
+    font-family:'Work Sans', sans-serif;
+    color:var(--cream);
+    min-height:100vh;
+  }
+  .wrap{max-width:460px;margin:0 auto;padding:0 0 48px;}
+  header{
+    padding:28px 20px 20px;
+    border-bottom:1px solid rgba(247,242,231,0.12);
+  }
+  .brand{
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    font-size:28px;
+    letter-spacing:-0.01em;
+    margin:0;
+  }
+  .brand span{color:var(--mustard);}
+  .tagline{
+    font-size:13px;
+    color:rgba(247,242,231,0.6);
+    margin:4px 0 0;
+  }
+  .tabs{
+    display:flex;
+    gap:8px;
+    padding:16px 20px 0;
+  }
+  .tab{
+    flex:1;
+    text-align:center;
+    padding:10px 8px;
+    border-radius:10px;
+    font-size:13px;
+    font-weight:500;
+    cursor:pointer;
+    background:transparent;
+    color:rgba(247,242,231,0.55);
+    border:1px solid rgba(247,242,231,0.14);
+  }
+  .tab.active{
+    background:var(--cream);
+    color:var(--ink);
+    border-color:var(--cream);
+  }
+  section{padding:18px 20px 0;}
+  .card{
+    background:var(--cream);
+    border-radius:16px;
+    padding:16px;
+    margin-bottom:12px;
+    color:var(--ink);
+  }
+  .empty{
+    text-align:center;
+    padding:40px 20px;
+    color:rgba(247,242,231,0.5);
+    font-size:14px;
+  }
+  .empty i{font-size:32px;display:block;margin-bottom:10px;opacity:0.6;}
+  .upload-btn{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    width:100%;
+    padding:14px;
+    border-radius:12px;
+    border:none;
+    background:var(--mustard);
+    color:var(--mustard-dark);
+    font-weight:600;
+    font-size:14px;
+    font-family:inherit;
+    cursor:pointer;
+    margin-bottom:10px;
+  }
+  .upload-btn:disabled{opacity:0.6;cursor:default;}
+  .add-manual{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    width:100%;
+    padding:12px;
+    border-radius:12px;
+    border:1px dashed rgba(247,242,231,0.3);
+    background:transparent;
+    color:rgba(247,242,231,0.75);
+    font-size:13px;
+    font-family:inherit;
+    cursor:pointer;
+    margin-bottom:16px;
+  }
+  #fileInput{display:none;}
+  .item-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 0;
+    border-top:1px solid rgba(36,38,31,0.08);
+  }
+  .item-row:first-child{border-top:none;}
+  .icon-chip{
+    width:32px;height:32px;
+    border-radius:8px;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--teal);
+    color:#EAF3EE;
+    flex-shrink:0;
+    font-size:15px;
+  }
+  .item-name{font-size:14px;font-weight:500;margin:0;}
+  .item-meta{font-size:11px;color:var(--ink-soft);margin:2px 0 0;font-family:'IBM Plex Mono',monospace;}
+  .item-qty{font-size:12px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;flex-shrink:0;}
+  .remove-btn{
+    background:none;border:none;color:var(--ink-soft);
+    cursor:pointer;padding:4px;flex-shrink:0;font-size:16px;
+  }
+  .stat-row{display:flex;gap:8px;margin-bottom:14px;}
+  .stat{
+    flex:1;
+    background:var(--cream);
+    border-radius:12px;
+    padding:10px 12px;
+  }
+  .stat p:first-child{font-size:11px;color:var(--ink-soft);margin:0;font-weight:500;}
+  .stat p:last-child{font-size:20px;margin:2px 0 0;font-weight:500;font-family:'Fraunces',serif;}
+  .filter-row{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+  .filter-chip{
+    font-size:12px;
+    padding:6px 12px;
+    border-radius:20px;
+    border:1px solid rgba(247,242,231,0.2);
+    background:transparent;
+    color:rgba(247,242,231,0.7);
+    cursor:pointer;
+    font-family:inherit;
+  }
+  .filter-chip.active{
+    background:var(--mustard);
+    border-color:var(--mustard);
+    color:var(--mustard-dark);
+  }
+  .recipe-card{
+    background:var(--cream);
+    border-radius:16px;
+    padding:14px 16px;
+    margin-bottom:10px;
+    color:var(--ink);
+  }
+  .recipe-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+  .recipe-name{font-family:'Fraunces',serif;font-size:16px;font-weight:500;margin:0;}
+  .badge{
+    font-size:10px;
+    padding:3px 9px;
+    border-radius:20px;
+    font-weight:500;
+    flex-shrink:0;
+    white-space:nowrap;
+  }
+  .badge.complete{background:#DCEEE6;color:var(--teal-dark);}
+  .badge.missing{background:#F7E6C8;color:var(--mustard-dark);}
+  .recipe-meta{font-size:11px;color:var(--ink-soft);margin:6px 0 0;font-family:'IBM Plex Mono',monospace;}
+  .recipe-body{font-size:13px;color:var(--ink);margin:10px 0 0;line-height:1.55;display:none;}
+  .recipe-body.open{display:block;}
+  .recipe-missing{font-size:12px;color:var(--tomato);margin:8px 0 0;}
+  .recipe-toggle{
+    background:none;border:none;color:var(--teal-dark);
+    font-size:12px;font-weight:500;padding:8px 0 0;cursor:pointer;font-family:inherit;
+  }
+  .gen-btn{
+    width:100%;
+    padding:14px;
+    border-radius:12px;
+    border:none;
+    background:var(--cream);
+    color:var(--ink);
+    font-weight:600;
+    font-size:14px;
+    font-family:inherit;
+    cursor:pointer;
+    margin-bottom:16px;
+  }
+  .gen-btn:disabled{opacity:0.5;cursor:default;}
+  .status-line{
+    font-size:12px;
+    color:rgba(247,242,231,0.55);
+    text-align:center;
+    padding:8px 0 4px;
+  }
+  .error-line{
+    font-size:12px;
+    color:#F2B8AC;
+    background:rgba(193,67,43,0.18);
+    border-radius:8px;
+    padding:8px 12px;
+    margin-bottom:12px;
+  }
+  .modal-bg{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.5);
+    align-items:flex-end;
+    justify-content:center;
+    z-index:10;
+  }
+  .modal-bg.open{display:flex;}
+  .modal{
+    background:var(--cream);
+    color:var(--ink);
+    width:100%;
+    max-width:460px;
+    border-radius:20px 20px 0 0;
+    padding:20px;
+  }
+  .modal h3{font-family:'Fraunces',serif;margin:0 0 14px;font-size:18px;}
+  .modal input{
+    width:100%;
+    padding:10px 12px;
+    border-radius:10px;
+    border:1px solid rgba(36,38,31,0.2);
+    font-family:inherit;
+    font-size:14px;
+    margin-bottom:10px;
+  }
+  .modal-actions{display:flex;gap:8px;margin-top:6px;}
+  .modal-actions button{
+    flex:1;
+    padding:11px;
+    border-radius:10px;
+    border:none;
+    font-family:inherit;
+    font-weight:500;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .modal-actions .cancel{background:transparent;border:1px solid rgba(36,38,31,0.2);color:var(--ink);}
+  .modal-actions .confirm{background:var(--teal);color:#EAF3EE;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="brand">Rech<span>ei</span>o</p>
+    <p class="tagline">Veja o que tem, descubra o que fazer.</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" id="tabFridge" onclick="switchTab('fridge')">Geladeira</button>
+    <button class="tab" id="tabRecipes" onclick="switchTab('recipes')">Receitas</button>
+  </div>
+
+  <section id="viewFridge">
+    <div style="padding-top:16px;">
+      <input type="file" id="fileInput" accept="image/*" capture="environment" onchange="handlePhoto(event)">
+      <button class="upload-btn" id="uploadBtn" onclick="document.getElementById('fileInput').click()">
+        <i class="ti ti-camera"></i> Fotografar a geladeira
+      </button>
+      <button class="add-manual" onclick="openAddModal()">
+        <i class="ti ti-plus"></i> Adicionar item manualmente
+      </button>
+    </div>
+
+    <div id="errorBox"></div>
+
+    <div class="stat-row" id="statRow" style="display:none;">
+      <div class="stat"><p>Itens</p><p id="statTotal">0</p></div>
+      <div class="stat"><p>Adicionados hoje</p><p id="statToday">0</p></div>
+    </div>
+
+    <div class="card" id="inventoryCard">
+      <div class="empty" id="emptyState">
+        <i class="ti ti-fridge"></i>
+        Sua geladeira ainda está vazia aqui.<br>Fotografe ou adicione um item pra começar.
+      </div>
+      <div id="itemList"></div>
+    </div>
+  </section>
+
+  <section id="viewRecipes" style="display:none;">
+    <div style="padding-top:16px;">
+      <button class="gen-btn" id="genBtn" onclick="generateRecipes()">
+        <i class="ti ti-tools-kitchen-2"></i> O que eu cozinho com isso?
+      </button>
+    </div>
+    <div id="recipeErrorBox"></div>
+    <div class="filter-row" id="filterRow" style="display:none;">
+      <button class="filter-chip active" data-filter="todas" onclick="setFilter('todas')">Todas</button>
+      <button class="filter-chip" data-filter="salgado" onclick="setFilter('salgado')">Salgado</button>
+      <button class="filter-chip" data-filter="doce" onclick="setFilter('doce')">Doce</button>
+      <button class="filter-chip" data-filter="completa" onclick="setFilter('completa')">Já dá pra fazer</button>
+    </div>
+    <div id="recipeList"></div>
+  </section>
+
+  <div class="modal-bg" id="modalBg">
+    <div class="modal">
+      <h3>Adicionar item</h3>
+      <input type="text" id="modalName" placeholder="Nome do item (ex: tomate)">
+      <input type="text" id="modalQty" placeholder="Quantidade (ex: 4 unidades)">
+      <div id="modalError" style="font-size:12px;color:var(--tomato);display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="cancel" onclick="closeAddModal()">Cancelar</button>
+        <button class="confirm" onclick="confirmAddItem()">Adicionar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css"></script>
+<script>
+let inventory = [];
+let recipes = [];
+let currentFilter = 'todas';
+const STORAGE_KEY = 'recheio_inventory';
+
+async function loadInventory(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    inventory = raw ? JSON.parse(raw) : [];
+  }catch(e){
+    inventory = [];
+  }
+  renderInventory();
+}
+
+async function saveInventory(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(inventory));
+  }catch(e){
+    showError('errorBox', 'Não consegui salvar sua geladeira agora. Tente de novo em instantes.');
+  }
+}
+
+function showError(boxId, msg){
+  const box = document.getElementById(boxId);
+  box.innerHTML = '<div class="error-line">' + msg + '</div>';
+}
+function clearError(boxId){
+  document.getElementById(boxId).innerHTML = '';
+}
+
+function switchTab(tab){
+  document.getElementById('viewFridge').style.display = tab === 'fridge' ? 'block' : 'none';
+  document.getElementById('viewRecipes').style.display = tab === 'recipes' ? 'block' : 'none';
+  document.getElementById('tabFridge').classList.toggle('active', tab === 'fridge');
+  document.getElementById('tabRecipes').classList.toggle('active', tab === 'recipes');
+}
+
+function iconFor(name){
+  const n = name.toLowerCase();
+  if(/toma|pimen|pepin|cenour|batat|cebol|alho/.test(n)) return 'ti-carrot';
+  if(/alface|couve|espinaf|salsa|verdura/.test(n)) return 'ti-leaf';
+  if(/leite|iogurt|queijo|manteiga/.test(n)) return 'ti-bottle';
+  if(/ovo/.test(n)) return 'ti-egg';
+  if(/carne|frango|peixe|linguiça/.test(n)) return 'ti-meat';
+  if(/fruta|maçã|banana|laranja|limão|uva/.test(n)) return 'ti-apple';
+  return 'ti-box';
+}
+
+function renderInventory(){
+  const list = document.getElementById('itemList');
+  const empty = document.getElementById('emptyState');
+  const statRow = document.getElementById('statRow');
+
+  if(inventory.length === 0){
+    empty.style.display = 'block';
+    list.innerHTML = '';
+    statRow.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  statRow.style.display = 'flex';
+
+  const today = new Date().toDateString();
+  document.getElementById('statTotal').textContent = inventory.length;
+  document.getElementById('statToday').textContent = inventory.filter(i => new Date(i.addedAt).toDateString() === today).length;
+
+  list.innerHTML = inventory.map((item, idx) => {
+    const days = Math.floor((Date.now() - item.addedAt) / 86400000);
+    const meta = days === 0 ? 'adicionado hoje' : (days === 1 ? 'adicionado há 1 dia' : 'adicionado há ' + days + ' dias');
+    return '<div class="item-row">' +
+      '<div class="icon-chip"><i class="ti ' + iconFor(item.name) + '"></i></div>' +
+      '<div style="flex:1;">' +
+        '<p class="item-name">' + escapeHtml(item.name) + '</p>' +
+        '<p class="item-meta">' + meta + '</p>' +
+      '</div>' +
+      '<span class="item-qty">' + escapeHtml(item.qty || '') + '</span>' +
+      '<button class="remove-btn" aria-label="Remover" onclick="removeItem(' + idx + ')"><i class="ti ti-x"></i></button>' +
+    '</div>';
+  }).join('');
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function removeItem(idx){
+  inventory.splice(idx, 1);
+  saveInventory();
+  renderInventory();
+}
+
+function openAddModal(){
+  document.getElementById('modalName').value = '';
+  document.getElementById('modalQty').value = '';
+  document.getElementById('modalError').style.display = 'none';
+  document.getElementById('modalBg').classList.add('open');
+}
+function closeAddModal(){
+  document.getElementById('modalBg').classList.remove('open');
+}
+function confirmAddItem(){
+  const name = document.getElementById('modalName').value.trim();
+  const qty = document.getElementById('modalQty').value.trim();
+  if(!name){
+    const err = document.getElementById('modalError');
+    err.textContent = 'Digite o nome do item primeiro.';
+    err.style.display = 'block';
+    return;
+  }
+  inventory.push({name, qty, addedAt: Date.now()});
+  saveInventory();
+  renderInventory();
+  closeAddModal();
+}
+
+async function handlePhoto(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  clearError('errorBox');
+  const btn = document.getElementById('uploadBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i> Identificando itens...';
+
+  try{
+    const base64 = await fileToBase64(file);
+    const response = await fetch("/api/identify", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ image: base64, mediaType: file.type || "image/jpeg" })
+    });
+    const data = await response.json();
+    if(!response.ok){
+      throw new Error(data.error || "Falha ao identificar itens");
+    }
+    const items = data.items || [];
+    if(!Array.isArray(items) || items.length === 0){
+      showError('errorBox', 'Não consegui identificar itens nessa foto com segurança. Tente uma foto mais próxima e iluminada, ou adicione manualmente.');
+    }else{
+      const now = Date.now();
+      items.forEach(it => {
+        if(it.name) inventory.push({name: it.name, qty: it.qty || '', addedAt: now});
+      });
+      await saveInventory();
+      renderInventory();
+    }
+  }catch(e){
+    showError('errorBox', 'Algo deu errado ao analisar a foto. Tente novamente.');
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-camera"></i> Fotografar a geladeira';
+    event.target.value = '';
+  }
+}
+
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(",")[1]);
+    r.onerror = () => reject(new Error("Falha ao ler arquivo"));
+    r.readAsDataURL(file);
+  });
+}
+
+async function generateRecipes(){
+  if(inventory.length === 0){
+    showError('recipeErrorBox', 'Adicione pelo menos um item na geladeira antes de pedir receitas.');
+    return;
+  }
+  clearError('recipeErrorBox');
+  const btn = document.getElementById('genBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i> Pensando em receitas...';
+
+  try{
+    const itemNames = inventory.map(i => i.name + (i.qty ? ' (' + i.qty + ')' : '')).join(', ');
+    const response = await fetch("/api/recipes", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ itemNames })
+    });
+    const data = await response.json();
+    if(!response.ok){
+      throw new Error(data.error || "Falha ao gerar receitas");
+    }
+    recipes = Array.isArray(data.recipes) ? data.recipes : [];
+    if(recipes.length === 0){
+      showError('recipeErrorBox', 'Não encontrei receitas boas com o que você tem agora. Tente adicionar mais itens.');
+    }
+    document.getElementById('filterRow').style.display = recipes.length ? 'flex' : 'none';
+    renderRecipes();
+  }catch(e){
+    showError('recipeErrorBox', 'Não consegui gerar as receitas agora. Tente de novo em instantes.');
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-tools-kitchen-2"></i> O que eu cozinho com isso?';
+  }
+}
+
+function setFilter(f){
+  currentFilter = f;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.toggle('active', c.dataset.filter === f));
+  renderRecipes();
+}
+
+function renderRecipes(){
+  const list = document.getElementById('recipeList');
+  let shown = recipes;
+  if(currentFilter === 'salgado') shown = recipes.filter(r => (r.category||'').toLowerCase().startsWith('salg'));
+  if(currentFilter === 'doce') shown = recipes.filter(r => (r.category||'').toLowerCase().startsWith('doc'));
+  if(currentFilter === 'completa') shown = recipes.filter(r => !r.missing || r.missing.length === 0);
+
+  if(shown.length === 0 && recipes.length > 0){
+    list.innerHTML = '<div class="empty">Nenhuma receita nesse filtro ainda.</div>';
+    return;
+  }
+
+  list.innerHTML = shown.map((r, idx) => {
+    const complete = !r.missing || r.missing.length === 0;
+    const badge = complete ? '<span class="badge complete">já dá pra fazer</span>' : '<span class="badge missing">falta ' + r.missing.length + '</span>';
+    const missingLine = complete ? '' : '<p class="recipe-missing">Falta: ' + r.missing.map(escapeHtml).join(', ') + '</p>';
+    return '<div class="recipe-card">' +
+      '<div class="recipe-top"><p class="recipe-name">' + escapeHtml(r.name || '') + '</p>' + badge + '</div>' +
+      '<p class="recipe-meta">' + (r.time_minutes || '?') + ' min · usa ' + (r.uses ? r.uses.length : 0) + ' item(ns) que você tem</p>' +
+      missingLine +
+      '<div class="recipe-body" id="body-' + idx + '">' + escapeHtml(r.instructions || '') + '</div>' +
+      '<button class="recipe-toggle" onclick="toggleRecipe(' + idx + ')" id="toggle-' + idx + '">Ver modo de preparo</button>' +
+    '</div>';
+  }).join('');
+}
+
+function toggleRecipe(idx){
+  const body = document.getElementById('body-' + idx);
+  const btn = document.getElementById('toggle-' + idx);
+  const open = body.classList.toggle('open');
+  btn.textContent = open ? 'Esconder modo de preparo' : 'Ver modo de preparo';
+}
+
+loadInventory();
+</script>
+</body>
+</html>
