@@ -309,7 +309,7 @@
   <section id="viewRecipes" style="display:none;">
     <div style="padding-top:16px;">
       <button class="gen-btn" id="genBtn" onclick="generateRecipes()">
-        <i class="ti ti-tools-kitchen-2"></i> O que eu cozinho com isso?
+        <i class="ti ti-tools-kitchen-2"></i> <span id="genBtnLabel">O que eu cozinho com isso?</span>
       </button>
     </div>
     <div id="recipeErrorBox"></div>
@@ -511,31 +511,37 @@ async function generateRecipes(){
   }
   clearError('recipeErrorBox');
   const btn = document.getElementById('genBtn');
+  const label = document.getElementById('genBtnLabel');
+  const isFirstBatch = recipes.length === 0;
   btn.disabled = true;
-  btn.innerHTML = '<i class="ti ti-loader-2"></i> Pensando em receitas...';
+  label.textContent = 'Pensando em receitas...';
 
   try{
     const itemNames = inventory.map(i => i.name + (i.qty ? ' (' + i.qty + ')' : '')).join(', ');
+    const excludeNames = recipes.map(r => r.name).filter(Boolean);
     const response = await fetch("/api/recipes", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ itemNames })
+      body: JSON.stringify({ itemNames, excludeNames })
     });
     const data = await response.json();
     if(!response.ok){
       throw new Error(data.error || "Falha ao gerar receitas");
     }
-    recipes = Array.isArray(data.recipes) ? data.recipes : [];
-    if(recipes.length === 0){
+    const newOnes = Array.isArray(data.recipes) ? data.recipes : [];
+    if(newOnes.length === 0 && isFirstBatch){
       showError('recipeErrorBox', 'Não encontrei receitas boas com o que você tem agora. Tente adicionar mais itens.');
+    }else if(newOnes.length === 0){
+      showError('recipeErrorBox', 'Não encontrei receitas novas dessa vez. Tente adicionar mais itens pra variar mais.');
     }
+    recipes = recipes.concat(newOnes);
     document.getElementById('filterRow').style.display = recipes.length ? 'flex' : 'none';
     renderRecipes();
   }catch(e){
     showError('recipeErrorBox', 'Não consegui gerar as receitas agora. Tente de novo em instantes.');
   }finally{
     btn.disabled = false;
-    btn.innerHTML = '<i class="ti ti-tools-kitchen-2"></i> O que eu cozinho com isso?';
+    label.textContent = recipes.length ? 'Gerar mais receitas' : 'O que eu cozinho com isso?';
   }
 }
 
@@ -561,12 +567,17 @@ function renderRecipes(){
     const complete = !r.missing || r.missing.length === 0;
     const badge = complete ? '<span class="badge complete">já dá pra fazer</span>' : '<span class="badge missing">falta ' + r.missing.length + '</span>';
     const missingLine = complete ? '' : '<p class="recipe-missing">Falta: ' + r.missing.map(escapeHtml).join(', ') + '</p>';
+    const ytQuery = encodeURIComponent((r.name || '') + ' receita como fazer');
+    const ytUrl = 'https://www.youtube.com/results?search_query=' + ytQuery;
     return '<div class="recipe-card">' +
       '<div class="recipe-top"><p class="recipe-name">' + escapeHtml(r.name || '') + '</p>' + badge + '</div>' +
       '<p class="recipe-meta">' + (r.time_minutes || '?') + ' min · usa ' + (r.uses ? r.uses.length : 0) + ' item(ns) que você tem</p>' +
       missingLine +
       '<div class="recipe-body" id="body-' + idx + '">' + escapeHtml(r.instructions || '') + '</div>' +
-      '<button class="recipe-toggle" onclick="toggleRecipe(' + idx + ')" id="toggle-' + idx + '">Ver modo de preparo</button>' +
+      '<div style="display:flex; gap:14px; align-items:center; padding-top:4px;">' +
+        '<button class="recipe-toggle" onclick="toggleRecipe(' + idx + ')" id="toggle-' + idx + '">Ver modo de preparo</button>' +
+        '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none;" href="' + ytUrl + '" target="_blank" rel="noopener"><i class="ti ti-brand-youtube"></i> Ver vídeo</a>' +
+      '</div>' +
     '</div>';
   }).join('');
 }
