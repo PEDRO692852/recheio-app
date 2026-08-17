@@ -265,6 +265,41 @@
   }
   .modal-actions .cancel{background:transparent;border:1px solid rgba(36,38,31,0.2);color:var(--ink);}
   .modal-actions .confirm{background:var(--teal);color:#EAF3EE;}
+  .item-meta.stale{color:var(--tomato);font-weight:500;}
+  .icon-chip.stale{background:var(--tomato);}
+  .edit-btn{
+    background:none;border:none;color:var(--ink-soft);
+    cursor:pointer;padding:4px 4px;flex-shrink:0;font-size:15px;line-height:1;
+  }
+  .shop-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 0;
+    border-top:1px solid rgba(36,38,31,0.08);
+  }
+  .shop-row:first-child{border-top:none;}
+  .shop-check{width:18px;height:18px;flex-shrink:0;cursor:pointer;}
+  .shop-name{font-size:14px;flex:1;margin:0;}
+  .shop-name.checked{text-decoration:line-through;color:var(--ink-soft);}
+  .clear-checked-btn{
+    width:100%;
+    padding:10px;
+    border-radius:10px;
+    border:1px solid rgba(247,242,231,0.2);
+    background:transparent;
+    color:rgba(247,242,231,0.7);
+    font-size:12px;
+    font-family:inherit;
+    cursor:pointer;
+    margin-top:10px;
+  }
+  .made-badge{
+    font-size:11px;
+    color:var(--teal-dark);
+    margin:6px 0 0;
+    font-weight:500;
+  }
 </style>
 </head>
 <body>
@@ -277,6 +312,7 @@
   <div class="tabs">
     <button class="tab active" id="tabFridge" onclick="switchTab('fridge')">Geladeira</button>
     <button class="tab" id="tabRecipes" onclick="switchTab('recipes')">Receitas</button>
+    <button class="tab" id="tabShopping" onclick="switchTab('shopping')">Compras</button>
   </div>
 
   <section id="viewFridge">
@@ -322,9 +358,20 @@
     <div id="recipeList"></div>
   </section>
 
+  <section id="viewShopping" style="display:none;">
+    <div class="card" style="margin-top:16px;">
+      <div class="empty" id="shopEmptyState">
+        <i class="ti ti-shopping-cart"></i>
+        Sua lista de compras está vazia.<br>Quando uma receita pedir um ingrediente que falta, adicione ele aqui direto.
+      </div>
+      <div id="shopList"></div>
+    </div>
+    <button class="clear-checked-btn" id="clearCheckedBtn" style="display:none;" onclick="clearCheckedShopping()">Limpar itens já comprados</button>
+  </section>
+
   <div class="modal-bg" id="modalBg">
     <div class="modal">
-      <h3>Adicionar item</h3>
+      <h3 id="modalTitle">Adicionar item</h3>
       <input type="text" id="modalName" placeholder="Nome do item (ex: tomate)">
       <input type="text" id="modalQty" placeholder="Quantidade (ex: 4 unidades)">
       <div id="modalError" style="font-size:12px;color:var(--tomato);display:none;margin-bottom:6px;"></div>
@@ -340,8 +387,14 @@
 <script>
 let inventory = [];
 let recipes = [];
+let shoppingList = [];
+let madeHistory = {};
 let currentFilter = 'todas';
+let editingIndex = null;
 const STORAGE_KEY = 'recheio_inventory';
+const SHOPPING_KEY = 'recheio_shopping';
+const HISTORY_KEY = 'recheio_history';
+const STALE_DAYS = 4;
 
 async function loadInventory(){
   try{
@@ -350,7 +403,20 @@ async function loadInventory(){
   }catch(e){
     inventory = [];
   }
+  try{
+    const rawShop = localStorage.getItem(SHOPPING_KEY);
+    shoppingList = rawShop ? JSON.parse(rawShop) : [];
+  }catch(e){
+    shoppingList = [];
+  }
+  try{
+    const rawHist = localStorage.getItem(HISTORY_KEY);
+    madeHistory = rawHist ? JSON.parse(rawHist) : {};
+  }catch(e){
+    madeHistory = {};
+  }
   renderInventory();
+  renderShoppingList();
 }
 
 async function saveInventory(){
@@ -372,8 +438,10 @@ function clearError(boxId){
 function switchTab(tab){
   document.getElementById('viewFridge').style.display = tab === 'fridge' ? 'block' : 'none';
   document.getElementById('viewRecipes').style.display = tab === 'recipes' ? 'block' : 'none';
+  document.getElementById('viewShopping').style.display = tab === 'shopping' ? 'block' : 'none';
   document.getElementById('tabFridge').classList.toggle('active', tab === 'fridge');
   document.getElementById('tabRecipes').classList.toggle('active', tab === 'recipes');
+  document.getElementById('tabShopping').classList.toggle('active', tab === 'shopping');
 }
 
 function iconFor(name){
@@ -407,14 +475,17 @@ function renderInventory(){
 
   list.innerHTML = inventory.map((item, idx) => {
     const days = Math.floor((Date.now() - item.addedAt) / 86400000);
+    const stale = days >= STALE_DAYS;
     const meta = days === 0 ? 'adicionado hoje' : (days === 1 ? 'adicionado há 1 dia' : 'adicionado há ' + days + ' dias');
+    const staleTag = stale ? ' · parado há um tempo, hora de usar' : '';
     return '<div class="item-row">' +
-      '<div class="icon-chip"><i class="ti ' + iconFor(item.name) + '"></i></div>' +
+      '<div class="icon-chip' + (stale ? ' stale' : '') + '"><i class="ti ' + iconFor(item.name) + '"></i></div>' +
       '<div style="flex:1;">' +
         '<p class="item-name">' + escapeHtml(item.name) + '</p>' +
-        '<p class="item-meta">' + meta + '</p>' +
+        '<p class="item-meta' + (stale ? ' stale' : '') + '">' + meta + staleTag + '</p>' +
       '</div>' +
       '<span class="item-qty">' + escapeHtml(item.qty || '') + '</span>' +
+      '<button class="edit-btn" aria-label="Editar" onclick="openEditModal(' + idx + ')">&#9998;</button>' +
       '<button class="remove-btn" aria-label="Remover" onclick="removeItem(' + idx + ')">&times;</button>' +
     '</div>';
   }).join('');
@@ -433,13 +504,25 @@ function removeItem(idx){
 }
 
 function openAddModal(){
+  editingIndex = null;
+  document.getElementById('modalTitle').textContent = 'Adicionar item';
   document.getElementById('modalName').value = '';
   document.getElementById('modalQty').value = '';
   document.getElementById('modalError').style.display = 'none';
   document.getElementById('modalBg').classList.add('open');
 }
+function openEditModal(idx){
+  editingIndex = idx;
+  const item = inventory[idx];
+  document.getElementById('modalTitle').textContent = 'Editar item';
+  document.getElementById('modalName').value = item.name;
+  document.getElementById('modalQty').value = item.qty || '';
+  document.getElementById('modalError').style.display = 'none';
+  document.getElementById('modalBg').classList.add('open');
+}
 function closeAddModal(){
   document.getElementById('modalBg').classList.remove('open');
+  editingIndex = null;
 }
 function confirmAddItem(){
   const name = document.getElementById('modalName').value.trim();
@@ -450,7 +533,12 @@ function confirmAddItem(){
     err.style.display = 'block';
     return;
   }
-  inventory.push({name, qty, addedAt: Date.now()});
+  if(editingIndex !== null && inventory[editingIndex]){
+    inventory[editingIndex].name = name;
+    inventory[editingIndex].qty = qty;
+  }else{
+    inventory.push({name, qty, addedAt: Date.now()});
+  }
   saveInventory();
   renderInventory();
   closeAddModal();
@@ -502,6 +590,88 @@ function fileToBase64(file){
     r.onerror = () => reject(new Error("Falha ao ler arquivo"));
     r.readAsDataURL(file);
   });
+}
+
+function saveShoppingList(){
+  try{
+    localStorage.setItem(SHOPPING_KEY, JSON.stringify(shoppingList));
+  }catch(e){
+    // silencioso, não é crítico
+  }
+}
+
+function renderShoppingList(){
+  const list = document.getElementById('shopList');
+  const empty = document.getElementById('shopEmptyState');
+  const clearBtn = document.getElementById('clearCheckedBtn');
+
+  if(shoppingList.length === 0){
+    empty.style.display = 'block';
+    list.innerHTML = '';
+    clearBtn.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  clearBtn.style.display = shoppingList.some(i => i.checked) ? 'block' : 'none';
+
+  list.innerHTML = shoppingList.map((item, idx) => {
+    return '<div class="shop-row">' +
+      '<input type="checkbox" class="shop-check" ' + (item.checked ? 'checked' : '') + ' onchange="toggleShoppingItem(' + idx + ')">' +
+      '<p class="shop-name' + (item.checked ? ' checked' : '') + '">' + escapeHtml(item.name) + '</p>' +
+      '<button class="remove-btn" aria-label="Remover" onclick="removeShoppingItem(' + idx + ')">&times;</button>' +
+    '</div>';
+  }).join('');
+}
+
+function addToShoppingList(names){
+  let added = 0;
+  names.forEach(name => {
+    const exists = shoppingList.some(i => i.name.toLowerCase() === name.toLowerCase());
+    if(!exists){
+      shoppingList.push({name, checked: false});
+      added++;
+    }
+  });
+  saveShoppingList();
+  renderShoppingList();
+  return added;
+}
+
+function toggleShoppingItem(idx){
+  shoppingList[idx].checked = !shoppingList[idx].checked;
+  saveShoppingList();
+  renderShoppingList();
+}
+
+function removeShoppingItem(idx){
+  shoppingList.splice(idx, 1);
+  saveShoppingList();
+  renderShoppingList();
+}
+
+function clearCheckedShopping(){
+  shoppingList = shoppingList.filter(i => !i.checked);
+  saveShoppingList();
+  renderShoppingList();
+}
+
+function saveHistory(){
+  try{
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(madeHistory));
+  }catch(e){
+    // silencioso, não é crítico
+  }
+}
+
+function markAsMade(name){
+  const key = name.toLowerCase();
+  if(!madeHistory[key]){
+    madeHistory[key] = { count: 0, lastMade: null };
+  }
+  madeHistory[key].count += 1;
+  madeHistory[key].lastMade = Date.now();
+  saveHistory();
+  renderRecipes();
 }
 
 async function generateRecipes(){
@@ -569,17 +739,27 @@ function renderRecipes(){
     const missingLine = complete ? '' : '<p class="recipe-missing">Falta: ' + r.missing.map(escapeHtml).join(', ') + '</p>';
     const ytQuery = encodeURIComponent((r.name || '') + ' receita como fazer');
     const ytUrl = 'https://www.youtube.com/results?search_query=' + ytQuery;
+    const waText = encodeURIComponent('Bora fazer "' + (r.name || '') + '" comigo? Achei essa receita no Recheio, usa ' + (r.uses ? r.uses.join(', ') : '') + '.');
+    const waUrl = 'https://wa.me/?text=' + waText;
+    const hist = madeHistory[(r.name || '').toLowerCase()];
+    const madeLine = hist && hist.count > 0 ? '<p class="made-badge">✓ Você já fez essa ' + hist.count + (hist.count === 1 ? ' vez' : ' vezes') + '</p>' : '';
+    const missingBtn = complete ? '' : '<button class="recipe-toggle" onclick="addRecipeMissingToShopping(' + idx + ')" id="shopadd-' + idx + '">+ Add à lista de compras</button>';
     return '<div class="recipe-card">' +
       '<div class="recipe-top"><p class="recipe-name">' + escapeHtml(r.name || '') + '</p>' + badge + '</div>' +
       '<p class="recipe-meta">' + (r.time_minutes || '?') + ' min · usa ' + (r.uses ? r.uses.length : 0) + ' item(ns) que você tem</p>' +
       missingLine +
+      madeLine +
       '<div class="recipe-body" id="body-' + idx + '">' + escapeHtml(r.instructions || '') + '</div>' +
-      '<div style="display:flex; gap:14px; align-items:center; padding-top:4px;">' +
+      '<div style="display:flex; gap:14px; align-items:center; padding-top:4px; flex-wrap:wrap;">' +
         '<button class="recipe-toggle" onclick="toggleRecipe(' + idx + ')" id="toggle-' + idx + '">Ver modo de preparo</button>' +
-        '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none;" href="' + ytUrl + '" target="_blank" rel="noopener"><i class="ti ti-brand-youtube"></i> Ver vídeo</a>' +
+        '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none;" href="' + ytUrl + '" target="_blank" rel="noopener">Ver vídeo</a>' +
+        '<a class="recipe-toggle" style="color:var(--teal-dark); text-decoration:none;" href="' + waUrl + '" target="_blank" rel="noopener">Chamar amigo</a>' +
+        '<button class="recipe-toggle" onclick="markAsMade(\'' + escapeHtml(r.name || '').replace(/'/g, "\\'") + '\')">Eu fiz essa</button>' +
       '</div>' +
+      missingBtn +
     '</div>';
   }).join('');
+  window.__shownRecipes = shown;
 }
 
 function toggleRecipe(idx){
@@ -587,6 +767,16 @@ function toggleRecipe(idx){
   const btn = document.getElementById('toggle-' + idx);
   const open = body.classList.toggle('open');
   btn.textContent = open ? 'Esconder modo de preparo' : 'Ver modo de preparo';
+}
+
+function addRecipeMissingToShopping(idx){
+  const r = (window.__shownRecipes || [])[idx];
+  if(!r || !r.missing || r.missing.length === 0) return;
+  const added = addToShoppingList(r.missing);
+  const btn = document.getElementById('shopadd-' + idx);
+  if(btn){
+    btn.textContent = added > 0 ? 'Adicionado ✓' : 'Já estava na lista ✓';
+  }
 }
 
 loadInventory();
