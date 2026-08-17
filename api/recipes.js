@@ -4,10 +4,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { itemNames } = req.body || {};
+    const { itemNames, excludeNames } = req.body || {};
     if (!itemNames) {
       return res.status(400).json({ error: 'Lista de itens não enviada' });
     }
+
+    const exclude = Array.isArray(excludeNames) && excludeNames.length
+      ? ' Não repita nenhuma destas receitas, já sugeridas antes: ' + excludeNames.join(', ') + '.'
+      : '';
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -21,7 +25,7 @@ export default async function handler(req, res) {
         max_tokens: 1500,
         messages: [{
           role: 'user',
-          content: 'Tenho estes itens na geladeira: ' + itemNames + '. Sugira ate 6 receitas brasileiras (doces e salgadas) usando o maximo possivel desses itens. Responda SOMENTE com um JSON valido, sem markdown, no formato: [{"name":"nome da receita","category":"salgado ou doce","time_minutes":15,"uses":["tomate","ovo"],"missing":["fuba"],"instructions":"passo a passo curto em 3-5 frases"}]. O campo missing deve listar so o que falta comprar; se a receita ja da pra fazer com o que tem, deixe missing como array vazio.'
+          content: 'Tenho estes itens na geladeira: ' + itemNames + '. Sugira ate 6 receitas brasileiras (doces e salgadas) usando o maximo possivel desses itens.' + exclude + ' Responda SOMENTE com um JSON valido, sem markdown, no formato: [{"name":"nome da receita","category":"salgado ou doce","time_minutes":15,"uses":["tomate","ovo"],"missing":["fuba"],"instructions":"passo a passo curto em 3-5 frases"}]. O campo missing deve listar so o que falta comprar; se a receita ja da pra fazer com o que tem, deixe missing como array vazio.'
         }]
       })
     });
