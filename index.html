@@ -708,7 +708,7 @@ async function generateRecipes(){
     document.getElementById('filterRow').style.display = recipes.length ? 'flex' : 'none';
     renderRecipes();
   }catch(e){
-    showError('recipeErrorBox', 'Não consegui gerar as receitas agora. Tente de novo em instantes.');
+    showError('recipeErrorBox', 'Não consegui gerar as receitas agora. Detalhe: ' + (e && e.message ? e.message : 'erro desconhecido') + '. Tente de novo em instantes.');
   }finally{
     btn.disabled = false;
     label.textContent = recipes.length ? 'Gerar mais receitas' : 'O que eu cozinho com isso?';
