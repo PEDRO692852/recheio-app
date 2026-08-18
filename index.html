@@ -309,6 +309,110 @@
     border-color:var(--teal);
     color:#EAF3EE;
   }
+  .quick-chips{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    margin-bottom:12px;
+  }
+  .quick-chip{
+    font-size:12px;
+    padding:6px 12px;
+    border-radius:20px;
+    border:1px solid rgba(247,242,231,0.2);
+    background:transparent;
+    color:rgba(247,242,231,0.8);
+    cursor:pointer;
+    font-family:inherit;
+  }
+  .quick-chip:active{
+    background:var(--mustard);
+    color:var(--mustard-dark);
+    border-color:var(--mustard);
+  }
+  .search-input{
+    width:100%;
+    padding:10px 12px;
+    border-radius:10px;
+    border:1px solid rgba(247,242,231,0.2);
+    background:rgba(247,242,231,0.06);
+    color:var(--cream);
+    font-family:inherit;
+    font-size:13px;
+    margin-bottom:12px;
+  }
+  .search-input::placeholder{color:rgba(247,242,231,0.4);}
+  .section-label{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    color:var(--ink-soft);
+    font-weight:600;
+    margin:14px 0 4px;
+  }
+  .section-label:first-child{margin-top:0;}
+  .loc-toggle{
+    display:flex;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .loc-btn{
+    flex:1;
+    padding:9px;
+    border-radius:10px;
+    border:1px solid rgba(36,38,31,0.2);
+    background:transparent;
+    color:var(--ink);
+    font-family:inherit;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .loc-btn.active{
+    background:var(--teal);
+    border-color:var(--teal);
+    color:#EAF3EE;
+  }
+  .mic-btn{
+    position:absolute;
+    right:10px;
+    top:50%;
+    transform:translateY(-50%);
+    background:none;
+    border:none;
+    font-size:16px;
+    cursor:pointer;
+    color:var(--ink-soft);
+    padding:4px;
+  }
+  .mic-btn.listening{color:var(--tomato);}
+  .undo-bar{
+    position:fixed;
+    bottom:18px;
+    left:50%;
+    transform:translateX(-50%);
+    background:var(--ink);
+    color:var(--cream);
+    padding:12px 16px;
+    border-radius:12px;
+    display:none;
+    align-items:center;
+    gap:14px;
+    font-size:13px;
+    z-index:20;
+    box-shadow:0 6px 20px rgba(0,0,0,0.3);
+    max-width:90vw;
+  }
+  .undo-bar.show{display:flex;}
+  .undo-bar button{
+    background:none;
+    border:none;
+    color:var(--mustard);
+    font-weight:600;
+    font-size:13px;
+    cursor:pointer;
+    font-family:inherit;
+    flex-shrink:0;
+  }
 </style>
 </head>
 <body>
@@ -340,12 +444,16 @@
       </button>
     </div>
 
+    <div class="quick-chips" id="quickChips"></div>
+
     <div id="errorBox"></div>
 
     <div class="stat-row" id="statRow" style="display:none;">
       <div class="stat"><p>Itens</p><p id="statTotal">0</p></div>
-      <div class="stat"><p>Adicionados hoje</p><p id="statToday">0</p></div>
+      <div class="stat"><p>Removidos 7 dias</p><p id="statConsumed">0</p></div>
     </div>
+
+    <input type="text" class="search-input" id="fridgeSearch" placeholder="Buscar item na geladeira..." oninput="renderInventory()">
 
     <div class="card" id="inventoryCard">
       <div class="empty" id="emptyState">
@@ -368,6 +476,9 @@
       <button class="filter-chip" data-filter="salgado" onclick="setFilter('salgado')">Salgado</button>
       <button class="filter-chip" data-filter="doce" onclick="setFilter('doce')">Doce</button>
       <button class="filter-chip" data-filter="completa" onclick="setFilter('completa')">Já dá pra fazer</button>
+      <button class="filter-chip" data-filter="rapida" onclick="setFilter('rapida')">Rápida (≤15min)</button>
+      <button class="filter-chip" data-filter="media" onclick="setFilter('media')">Média</button>
+      <button class="filter-chip" data-filter="capricho" onclick="setFilter('capricho')">Capricho</button>
     </div>
     <div id="recipeList"></div>
   </section>
@@ -386,7 +497,14 @@
   <div class="modal-bg" id="modalBg">
     <div class="modal">
       <h3 id="modalTitle">Adicionar item</h3>
-      <input type="text" id="modalName" placeholder="Nome do item (ex: tomate)">
+      <div class="loc-toggle">
+        <button type="button" class="loc-btn active" id="locFridgeBtn" onclick="setModalLocation('geladeira')">Geladeira</button>
+        <button type="button" class="loc-btn" id="locFreezerBtn" onclick="setModalLocation('freezer')">Freezer</button>
+      </div>
+      <div style="position:relative;">
+        <input type="text" id="modalName" placeholder="Nome do item (ex: tomate)" style="padding-right:38px;">
+        <button type="button" class="mic-btn" id="micBtn" onclick="toggleVoiceInput()" aria-label="Falar o nome"><i class="ti ti-microphone"></i></button>
+      </div>
       <input type="text" id="modalQty" placeholder="Quantidade (ex: 4 unidades)">
       <div id="modalError" style="font-size:12px;color:var(--tomato);display:none;margin-bottom:6px;"></div>
       <div class="modal-actions">
@@ -425,6 +543,11 @@
   </div>
 </div>
 
+<div class="undo-bar" id="undoBar">
+  <span id="undoText">Item removido</span>
+  <button onclick="undoRemove()">DESFAZER</button>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -432,12 +555,19 @@ let inventory = [];
 let recipes = [];
 let shoppingList = [];
 let madeHistory = {};
+let consumedLog = [];
 let currentFilter = 'todas';
 let editingIndex = null;
+let modalLocation = 'geladeira';
+let pendingUndo = null;
+let undoTimer = null;
+let recognition = null;
 const STORAGE_KEY = 'recheio_inventory';
 const SHOPPING_KEY = 'recheio_shopping';
 const HISTORY_KEY = 'recheio_history';
+const CONSUMED_KEY = 'recheio_consumed';
 const STALE_DAYS = 4;
+const QUICK_ITEMS = ['ovo','leite','arroz','feijão','tomate','cebola','alho','queijo','manteiga','café'];
 
 const SUPABASE_URL = 'https://cowfkzagvuhxmhhzqmcs.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_jkhtR0oCr6ymGdZzPWdBOg_jRYb5xZ7';
@@ -605,8 +735,36 @@ async function loadInventory(){
   }catch(e){
     madeHistory = {};
   }
+  try{
+    const rawConsumed = localStorage.getItem(CONSUMED_KEY);
+    consumedLog = rawConsumed ? JSON.parse(rawConsumed) : [];
+  }catch(e){
+    consumedLog = [];
+  }
   renderInventory();
   renderShoppingList();
+  renderQuickChips();
+}
+
+function renderQuickChips(){
+  const box = document.getElementById('quickChips');
+  box.innerHTML = QUICK_ITEMS.map(name =>
+    '<button type="button" class="quick-chip" onclick="quickAddItem(\'' + name.replace(/'/g, "\\'") + '\')">+ ' + escapeHtml(name) + '</button>'
+  ).join('');
+}
+
+function quickAddItem(name){
+  inventory.push({name, qty: '', addedAt: Date.now(), location: 'geladeira'});
+  saveInventory();
+  renderInventory();
+}
+
+function saveConsumedLog(){
+  try{
+    localStorage.setItem(CONSUMED_KEY, JSON.stringify(consumedLog));
+  }catch(e){
+    // silencioso
+  }
 }
 
 async function saveInventory(){
@@ -649,21 +807,34 @@ function renderInventory(){
   const list = document.getElementById('itemList');
   const empty = document.getElementById('emptyState');
   const statRow = document.getElementById('statRow');
+  const searchBox = document.getElementById('fridgeSearch');
 
   if(inventory.length === 0){
     empty.style.display = 'block';
     list.innerHTML = '';
     statRow.style.display = 'none';
+    searchBox.style.display = 'none';
     return;
   }
   empty.style.display = 'none';
   statRow.style.display = 'flex';
+  searchBox.style.display = 'block';
 
-  const today = new Date().toDateString();
+  const weekAgo = Date.now() - (7 * 86400000);
   document.getElementById('statTotal').textContent = inventory.length;
-  document.getElementById('statToday').textContent = inventory.filter(i => new Date(i.addedAt).toDateString() === today).length;
+  document.getElementById('statConsumed').textContent = consumedLog.filter(c => c.removedAt >= weekAgo).length;
 
-  list.innerHTML = inventory.map((item, idx) => {
+  const query = (searchBox.value || '').toLowerCase().trim();
+  const filtered = inventory
+    .map((item, idx) => ({ item, idx }))
+    .filter(({item}) => !query || item.name.toLowerCase().includes(query));
+
+  if(filtered.length === 0){
+    list.innerHTML = '<div class="empty" style="padding:24px 12px;">Nenhum item encontrado pra "' + escapeHtml(query) + '".</div>';
+    return;
+  }
+
+  const renderRow = ({item, idx}) => {
     const days = Math.floor((Date.now() - item.addedAt) / 86400000);
     const stale = days >= STALE_DAYS;
     const meta = days === 0 ? 'adicionado hoje' : (days === 1 ? 'adicionado há 1 dia' : 'adicionado há ' + days + ' dias');
@@ -678,7 +849,19 @@ function renderInventory(){
       '<button class="edit-btn" aria-label="Editar" onclick="openEditModal(' + idx + ')">&#9998;</button>' +
       '<button class="remove-btn" aria-label="Remover" onclick="removeItem(' + idx + ')">&times;</button>' +
     '</div>';
-  }).join('');
+  };
+
+  const fridgeItems = filtered.filter(({item}) => (item.location || 'geladeira') !== 'freezer');
+  const freezerItems = filtered.filter(({item}) => item.location === 'freezer');
+
+  let html = '';
+  if(fridgeItems.length){
+    html += '<p class="section-label">Geladeira</p>' + fridgeItems.map(renderRow).join('');
+  }
+  if(freezerItems.length){
+    html += '<p class="section-label">Freezer</p>' + freezerItems.map(renderRow).join('');
+  }
+  list.innerHTML = html;
 }
 
 function escapeHtml(s){
@@ -688,9 +871,39 @@ function escapeHtml(s){
 }
 
 function removeItem(idx){
+  const removed = inventory[idx];
   inventory.splice(idx, 1);
   saveInventory();
   renderInventory();
+
+  consumedLog.push({ name: removed.name, removedAt: Date.now() });
+  saveConsumedLog();
+
+  showUndoBar(removed);
+}
+
+function showUndoBar(removedItem){
+  pendingUndo = removedItem;
+  const bar = document.getElementById('undoBar');
+  document.getElementById('undoText').textContent = '"' + removedItem.name + '" removido';
+  bar.classList.add('show');
+  if(undoTimer) clearTimeout(undoTimer);
+  undoTimer = setTimeout(() => {
+    bar.classList.remove('show');
+    pendingUndo = null;
+  }, 5000);
+}
+
+function undoRemove(){
+  if(!pendingUndo) return;
+  inventory.push(pendingUndo);
+  saveInventory();
+  renderInventory();
+  consumedLog.pop();
+  saveConsumedLog();
+  document.getElementById('undoBar').classList.remove('show');
+  if(undoTimer) clearTimeout(undoTimer);
+  pendingUndo = null;
 }
 
 function openAddModal(){
@@ -699,6 +912,7 @@ function openAddModal(){
   document.getElementById('modalName').value = '';
   document.getElementById('modalQty').value = '';
   document.getElementById('modalError').style.display = 'none';
+  setModalLocation('geladeira');
   document.getElementById('modalBg').classList.add('open');
 }
 function openEditModal(idx){
@@ -708,11 +922,18 @@ function openEditModal(idx){
   document.getElementById('modalName').value = item.name;
   document.getElementById('modalQty').value = item.qty || '';
   document.getElementById('modalError').style.display = 'none';
+  setModalLocation(item.location || 'geladeira');
   document.getElementById('modalBg').classList.add('open');
 }
 function closeAddModal(){
   document.getElementById('modalBg').classList.remove('open');
   editingIndex = null;
+  stopVoiceInput();
+}
+function setModalLocation(loc){
+  modalLocation = loc;
+  document.getElementById('locFridgeBtn').classList.toggle('active', loc === 'geladeira');
+  document.getElementById('locFreezerBtn').classList.toggle('active', loc === 'freezer');
 }
 function confirmAddItem(){
   const name = document.getElementById('modalName').value.trim();
@@ -726,12 +947,53 @@ function confirmAddItem(){
   if(editingIndex !== null && inventory[editingIndex]){
     inventory[editingIndex].name = name;
     inventory[editingIndex].qty = qty;
+    inventory[editingIndex].location = modalLocation;
   }else{
-    inventory.push({name, qty, addedAt: Date.now()});
+    inventory.push({name, qty, addedAt: Date.now(), location: modalLocation});
   }
   saveInventory();
   renderInventory();
   closeAddModal();
+}
+
+function toggleVoiceInput(){
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRecognition){
+    const err = document.getElementById('modalError');
+    err.textContent = 'Seu navegador não suporta entrada por voz. Digite normalmente.';
+    err.style.display = 'block';
+    return;
+  }
+  const micBtn = document.getElementById('micBtn');
+  if(recognition){
+    stopVoiceInput();
+    return;
+  }
+  recognition = new SpeechRecognition();
+  recognition.lang = 'pt-BR';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.onresult = (event) => {
+    const text = event.results[0][0].transcript;
+    document.getElementById('modalName').value = text;
+  };
+  recognition.onerror = () => {
+    stopVoiceInput();
+  };
+  recognition.onend = () => {
+    stopVoiceInput();
+  };
+  micBtn.classList.add('listening');
+  recognition.start();
+}
+
+function stopVoiceInput(){
+  const micBtn = document.getElementById('micBtn');
+  if(micBtn) micBtn.classList.remove('listening');
+  if(recognition){
+    try{ recognition.stop(); }catch(e){}
+    recognition = null;
+  }
 }
 
 async function handlePhoto(event){
@@ -759,7 +1021,7 @@ async function handlePhoto(event){
     }else{
       const now = Date.now();
       items.forEach(it => {
-        if(it.name) inventory.push({name: it.name, qty: it.qty || '', addedAt: now});
+        if(it.name) inventory.push({name: it.name, qty: it.qty || '', addedAt: now, location: 'geladeira'});
       });
       await saveInventory();
       renderInventory();
@@ -921,6 +1183,9 @@ function renderRecipes(){
   if(currentFilter === 'salgado') shown = recipes.filter(r => (r.category||'').toLowerCase().startsWith('salg'));
   if(currentFilter === 'doce') shown = recipes.filter(r => (r.category||'').toLowerCase().startsWith('doc'));
   if(currentFilter === 'completa') shown = recipes.filter(r => !r.missing || r.missing.length === 0);
+  if(currentFilter === 'rapida') shown = recipes.filter(r => (r.time_minutes || 0) <= 15);
+  if(currentFilter === 'media') shown = recipes.filter(r => (r.time_minutes || 0) > 15 && (r.time_minutes || 0) <= 30);
+  if(currentFilter === 'capricho') shown = recipes.filter(r => (r.time_minutes || 0) > 30);
 
   if(shown.length === 0 && recipes.length > 0){
     list.innerHTML = '<div class="empty">Nenhuma receita nesse filtro ainda.</div>';
