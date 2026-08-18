@@ -22,10 +22,10 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 1200,
+        max_tokens: 3000,
         messages: [{
           role: 'user',
-          content: 'Tenho estes itens na geladeira: ' + itemNames + '. Sugira 6 receitas brasileiras (doces e salgadas) que se conectem com o que tenho.' + exclude + ' IMPORTANTE: nunca retorne uma lista vazia, mesmo que eu tenha poucos itens. Se eu tiver poucos itens, inclua receitas simples que usem so 1 ou 2 deles, complementando com ingredientes comuns de despensa (sal, oleo, acucar, farinha, agua, temperos basicos) que a maioria das cozinhas ja tem e por isso NAO devem entrar no campo missing. Priorize receitas que aproveitem mais itens quando possivel, mas sempre inclua tambem algumas receitas de inspiracao mais simples caso eu tenha poucos itens. Responda SOMENTE com um JSON valido, sem markdown, no formato: [{"name":"nome da receita","category":"salgado ou doce","time_minutes":15,"uses":["tomate","ovo"],"missing":["fuba"],"instructions":"passo a passo bem curto em 2-3 frases"}]. O campo missing deve listar so ingredientes que realmente precisam ser comprados (nao itens basicos de despensa); se a receita ja da pra fazer com o que tem, deixe missing como array vazio.'
+          content: 'Tenho estes itens na geladeira: ' + itemNames + '. Sugira 15 receitas brasileiras (doces e salgadas) que se conectem com o que tenho.' + exclude + ' IMPORTANTE: nunca retorne uma lista vazia, mesmo que eu tenha poucos itens, e sempre tente retornar as 15 receitas cheias. Se eu tiver poucos itens, inclua receitas simples que usem so 1 ou 2 deles, complementando com ingredientes comuns de despensa (sal, oleo, acucar, farinha, agua, temperos basicos) que a maioria das cozinhas ja tem e por isso NAO devem entrar no campo missing. Varie bastante entre as 15: inclua receitas rapidas, receitas mais elaboradas, doces, salgadas, e receitas de inspiracao caso eu tenha poucos itens. Responda SOMENTE com um JSON valido, sem markdown, no formato: [{"name":"nome da receita","category":"salgado ou doce","time_minutes":15,"uses":["tomate","ovo"],"missing":["fuba"],"instructions":"passo a passo bem curto em 2-3 frases"}]. O campo missing deve listar so ingredientes que realmente precisam ser comprados (nao itens basicos de despensa); se a receita ja da pra fazer com o que tem, deixe missing como array vazio.'
         }]
       })
     });
