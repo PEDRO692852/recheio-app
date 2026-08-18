@@ -1196,8 +1196,6 @@ function renderRecipes(){
     const complete = !r.missing || r.missing.length === 0;
     const badge = complete ? '<span class="badge complete">já dá pra fazer</span>' : '<span class="badge missing">falta ' + r.missing.length + '</span>';
     const missingLine = complete ? '' : '<p class="recipe-missing">Falta: ' + r.missing.map(escapeHtml).join(', ') + '</p>';
-    const ytQuery = encodeURIComponent((r.name || '') + ' receita como fazer');
-    const ytUrl = 'https://www.youtube.com/results?search_query=' + ytQuery;
     const waText = encodeURIComponent('Bora fazer "' + (r.name || '') + '" comigo? Achei essa receita no Recheio, usa ' + (r.uses ? r.uses.join(', ') : '') + '.');
     const waUrl = 'https://wa.me/?text=' + waText;
     const hist = madeHistory[(r.name || '').toLowerCase()];
@@ -1209,9 +1207,9 @@ function renderRecipes(){
       missingLine +
       madeLine +
       '<div class="recipe-body" id="body-' + idx + '">' + escapeHtml(r.instructions || '') + '</div>' +
+      '<div class="video-slot" id="video-' + idx + '"></div>' +
       '<div style="display:flex; gap:14px; align-items:center; padding-top:4px; flex-wrap:wrap;">' +
         '<button class="recipe-toggle" onclick="toggleRecipe(' + idx + ')" id="toggle-' + idx + '">Ver modo de preparo</button>' +
-        '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none;" href="' + ytUrl + '" target="_blank" rel="noopener">Ver vídeo</a>' +
         '<a class="recipe-toggle" style="color:var(--teal-dark); text-decoration:none;" href="' + waUrl + '" target="_blank" rel="noopener">Chamar amigo</a>' +
         '<button class="recipe-toggle" onclick="markAsMade(\'' + escapeHtml(r.name || '').replace(/'/g, "\\'") + '\')">Eu fiz essa</button>' +
       '</div>' +
@@ -1219,6 +1217,31 @@ function renderRecipes(){
     '</div>';
   }).join('');
   window.__shownRecipes = shown;
+  loadRecipeVideos(shown);
+}
+
+async function loadRecipeVideos(shownRecipes){
+  shownRecipes.forEach(async (r, idx) => {
+    const slot = document.getElementById('video-' + idx);
+    if(!slot) return;
+    try{
+      const response = await fetch('/api/youtube-search', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ query: (r.name || '') + ' receita como fazer' })
+      });
+      const data = await response.json();
+      if(response.ok && data.videoId){
+        slot.innerHTML = '<iframe width="100%" height="180" style="border-radius:10px; border:none; margin-top:8px;" src="https://www.youtube.com/embed/' + data.videoId + '" title="Vídeo da receita" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
+      }else{
+        const ytUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((r.name || '') + ' receita como fazer');
+        slot.innerHTML = '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none; display:inline-block; padding-top:8px;" href="' + ytUrl + '" target="_blank" rel="noopener">Ver vídeo no YouTube</a>';
+      }
+    }catch(e){
+      const ytUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((r.name || '') + ' receita como fazer');
+      slot.innerHTML = '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none; display:inline-block; padding-top:8px;" href="' + ytUrl + '" target="_blank" rel="noopener">Ver vídeo no YouTube</a>';
+    }
+  });
 }
 
 function toggleRecipe(idx){
