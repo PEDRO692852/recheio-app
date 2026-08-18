@@ -1,8 +1,1 @@
-{
-  "version": 2,
-  "functions": {
-    "api/recipes.js": { "maxDuration": 45 },
-    "api/identify.js": { "maxDuration": 30 },
-    "api/youtube-search.js": { "maxDuration": 15 }
-  }
-}
+{ "version": 2 }
