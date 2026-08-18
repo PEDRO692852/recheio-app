@@ -1198,9 +1198,11 @@ function renderRecipes(){
     const missingLine = complete ? '' : '<p class="recipe-missing">Falta: ' + r.missing.map(escapeHtml).join(', ') + '</p>';
     const waText = encodeURIComponent('Bora fazer "' + (r.name || '') + '" comigo? Achei essa receita no Recheio, usa ' + (r.uses ? r.uses.join(', ') : '') + '.');
     const waUrl = 'https://wa.me/?text=' + waText;
+    const ifoodUrl = 'https://www.ifood.com.br/busca?q=' + encodeURIComponent(r.name || '');
     const hist = madeHistory[(r.name || '').toLowerCase()];
     const madeLine = hist && hist.count > 0 ? '<p class="made-badge">✓ Você já fez essa ' + hist.count + (hist.count === 1 ? ' vez' : ' vezes') + '</p>' : '';
     const missingBtn = complete ? '' : '<button class="recipe-toggle" onclick="addRecipeMissingToShopping(' + idx + ')" id="shopadd-' + idx + '">+ Add à lista de compras</button>';
+    const copyMissingBtn = complete ? '' : '<button class="recipe-toggle" onclick="copyMissingIngredients(' + idx + ')" id="copymiss-' + idx + '">Copiar o que falta</button>';
     return '<div class="recipe-card">' +
       '<div class="recipe-top"><p class="recipe-name">' + escapeHtml(r.name || '') + '</p>' + badge + '</div>' +
       '<p class="recipe-meta">' + (r.time_minutes || '?') + ' min · usa ' + (r.uses ? r.uses.length : 0) + ' item(ns) que você tem</p>' +
@@ -1213,11 +1215,56 @@ function renderRecipes(){
         '<a class="recipe-toggle" style="color:var(--teal-dark); text-decoration:none;" href="' + waUrl + '" target="_blank" rel="noopener">Chamar amigo</a>' +
         '<button class="recipe-toggle" onclick="markAsMade(\'' + escapeHtml(r.name || '').replace(/'/g, "\\'") + '\')">Eu fiz essa</button>' +
       '</div>' +
+      '<div style="display:flex; gap:14px; align-items:center; padding-top:6px; flex-wrap:wrap;">' +
+        '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none;" href="' + ifoodUrl + '" target="_blank" rel="noopener">Pedir pronto no iFood</a>' +
+        '<button class="recipe-toggle" onclick="copyRecipeName(' + idx + ')" id="copyname-' + idx + '">Copiar nome do prato</button>' +
+        copyMissingBtn +
+      '</div>' +
       missingBtn +
     '</div>';
   }).join('');
   window.__shownRecipes = shown;
   loadRecipeVideos(shown);
+}
+
+function copyToClipboard(text, btnId, successLabel){
+  const btn = document.getElementById(btnId);
+  const originalLabel = btn ? btn.textContent : '';
+  const done = () => {
+    if(btn){
+      btn.textContent = successLabel;
+      setTimeout(() => { btn.textContent = originalLabel; }, 2000);
+    }
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  }else{
+    fallbackCopy(text, done);
+  }
+}
+
+function fallbackCopy(text, done){
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try{ document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta);
+  done();
+}
+
+function copyRecipeName(idx){
+  const r = (window.__shownRecipes || [])[idx];
+  if(!r) return;
+  copyToClipboard(r.name || '', 'copyname-' + idx, 'Copiado ✓');
+}
+
+function copyMissingIngredients(idx){
+  const r = (window.__shownRecipes || [])[idx];
+  if(!r || !r.missing || r.missing.length === 0) return;
+  copyToClipboard(r.missing.join(', '), 'copymiss-' + idx, 'Copiado ✓');
 }
 
 async function loadRecipeVideos(shownRecipes){
