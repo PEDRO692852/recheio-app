@@ -305,8 +305,13 @@
 <body>
 <div class="wrap">
   <header>
-    <p class="brand">Rech<span>ei</span>o</p>
-    <p class="tagline">Veja o que tem, descubra o que fazer.</p>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div>
+        <p class="brand">Rech<span>ei</span>o</p>
+        <p class="tagline">Veja o que tem, descubra o que fazer.</p>
+      </div>
+      <div id="authArea" style="text-align:right;"></div>
+    </div>
   </header>
 
   <div class="tabs">
@@ -381,9 +386,38 @@
       </div>
     </div>
   </div>
+
+  <div class="modal-bg" id="authModalBg">
+    <div class="modal">
+      <div class="tabs" style="padding:0 0 14px;">
+        <button class="tab active" id="authTabLogin" onclick="switchAuthTab('login')">Entrar</button>
+        <button class="tab" id="authTabSignup" onclick="switchAuthTab('signup')">Criar conta</button>
+      </div>
+      <input type="email" id="authEmail" placeholder="Seu e-mail">
+      <input type="password" id="authPassword" placeholder="Sua senha (mínimo 6 caracteres)">
+      <div id="authError" style="font-size:12px;color:var(--tomato);display:none;margin-bottom:6px;"></div>
+      <div id="authInfo" style="font-size:12px;color:var(--teal-dark);display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="cancel" onclick="closeAuthModal()">Cancelar</button>
+        <button class="confirm" id="authSubmitBtn" onclick="submitAuth()">Entrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="upsellModalBg">
+    <div class="modal">
+      <h3>Isso é Premium</h3>
+      <p style="font-size:13px; color:var(--ink-soft); margin:0 0 14px;">Receitas ilimitadas fazem parte da assinatura Premium do Recheio. Crie sua conta (ou entre) pra continuar.</p>
+      <div class="modal-actions">
+        <button class="cancel" onclick="closeUpsellModal()">Agora não</button>
+        <button class="confirm" onclick="closeUpsellModal(); openAuthModal();">Entrar / Criar conta</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 let inventory = [];
 let recipes = [];
@@ -395,6 +429,153 @@ const STORAGE_KEY = 'recheio_inventory';
 const SHOPPING_KEY = 'recheio_shopping';
 const HISTORY_KEY = 'recheio_history';
 const STALE_DAYS = 4;
+
+const SUPABASE_URL = 'https://cowfkzagvuhxmhhzqmcs.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_jkhtR0oCr6ymGdZzPWdBOg_jRYb5xZ7';
+let sbClient = null;
+let sbInitError = null;
+try{
+  sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+}catch(e){
+  sbInitError = e && e.message ? e.message : 'Falha ao iniciar login';
+}
+let currentUser = null;
+let isPremium = false;
+let authMode = 'login';
+
+async function initAuth(){
+  if(!sbClient){
+    document.getElementById('authArea').innerHTML = '<span style="font-size:10px; color:#F2B8AC;">login indisponível</span>';
+    return;
+  }
+  try{
+    const { data } = await sbClient.auth.getSession();
+    currentUser = data && data.session ? data.session.user : null;
+  }catch(e){
+    currentUser = null;
+  }
+  if(currentUser){
+    await checkSubscription();
+  }
+  renderAuthArea();
+
+  sbClient.auth.onAuthStateChange((event, session) => {
+    currentUser = session ? session.user : null;
+    if(currentUser){
+      checkSubscription().then(renderAuthArea);
+    }else{
+      isPremium = false;
+      renderAuthArea();
+    }
+  });
+}
+
+async function checkSubscription(){
+  if(!currentUser) { isPremium = false; return; }
+  try{
+    const { data, error } = await sbClient
+      .from('subscriptions')
+      .select('is_premium')
+      .eq('user_id', currentUser.id)
+      .maybeSingle();
+    isPremium = !!(data && data.is_premium);
+  }catch(e){
+    isPremium = false;
+  }
+}
+
+function renderAuthArea(){
+  const area = document.getElementById('authArea');
+  if(currentUser){
+    const badge = isPremium ? '<div style="font-size:10px; background:var(--mustard); color:var(--mustard-dark); padding:2px 8px; border-radius:20px; display:inline-block; margin-bottom:4px; font-weight:600;">PREMIUM</div><br>' : '';
+    area.innerHTML = badge +
+      '<span style="font-size:11px; color:rgba(247,242,231,0.6);">' + escapeHtml(currentUser.email) + '</span><br>' +
+      '<button class="recipe-toggle" style="color:var(--cream); padding-top:2px;" onclick="signOut()">Sair</button>';
+  }else{
+    area.innerHTML = '<button class="recipe-toggle" style="color:var(--mustard); padding-top:2px;" onclick="openAuthModal()">Entrar</button>';
+  }
+}
+
+function openAuthModal(){
+  authMode = 'login';
+  document.getElementById('authEmail').value = '';
+  document.getElementById('authPassword').value = '';
+  document.getElementById('authError').style.display = 'none';
+  document.getElementById('authInfo').style.display = 'none';
+  switchAuthTab('login');
+  document.getElementById('authModalBg').classList.add('open');
+}
+function closeAuthModal(){
+  document.getElementById('authModalBg').classList.remove('open');
+}
+function switchAuthTab(mode){
+  authMode = mode;
+  document.getElementById('authTabLogin').classList.toggle('active', mode === 'login');
+  document.getElementById('authTabSignup').classList.toggle('active', mode === 'signup');
+  document.getElementById('authSubmitBtn').textContent = mode === 'login' ? 'Entrar' : 'Criar conta';
+  document.getElementById('authError').style.display = 'none';
+  document.getElementById('authInfo').style.display = 'none';
+}
+
+async function submitAuth(){
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const errBox = document.getElementById('authError');
+  const infoBox = document.getElementById('authInfo');
+  errBox.style.display = 'none';
+  infoBox.style.display = 'none';
+
+  if(!email || !password){
+    errBox.textContent = 'Preencha e-mail e senha.';
+    errBox.style.display = 'block';
+    return;
+  }
+
+  const btn = document.getElementById('authSubmitBtn');
+  btn.disabled = true;
+
+  try{
+    if(authMode === 'login'){
+      const { error } = await sbClient.auth.signInWithPassword({ email, password });
+      if(error) throw error;
+      await checkSubscription();
+      renderAuthArea();
+      closeAuthModal();
+    }else{
+      const { error } = await sbClient.auth.signUp({ email, password });
+      if(error) throw error;
+      infoBox.textContent = 'Conta criada! Se pedir confirmação por e-mail, confira sua caixa de entrada antes de entrar.';
+      infoBox.style.display = 'block';
+    }
+  }catch(e){
+    errBox.textContent = (e && e.message) ? traduzErroAuth(e.message) : 'Algo deu errado. Tente de novo.';
+    errBox.style.display = 'block';
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+function traduzErroAuth(msg){
+  const m = msg.toLowerCase();
+  if(m.includes('invalid login credentials')) return 'E-mail ou senha incorretos.';
+  if(m.includes('user already registered')) return 'Já existe uma conta com esse e-mail. Tente entrar.';
+  if(m.includes('password') && m.includes('6')) return 'A senha precisa ter pelo menos 6 caracteres.';
+  return msg;
+}
+
+async function signOut(){
+  await sbClient.auth.signOut();
+  currentUser = null;
+  isPremium = false;
+  renderAuthArea();
+}
+
+function openUpsellModal(){
+  document.getElementById('upsellModalBg').classList.add('open');
+}
+function closeUpsellModal(){
+  document.getElementById('upsellModalBg').classList.remove('open');
+}
 
 async function loadInventory(){
   try{
@@ -679,10 +860,14 @@ async function generateRecipes(){
     showError('recipeErrorBox', 'Adicione pelo menos um item na geladeira antes de pedir receitas.');
     return;
   }
+  const isFirstBatch = recipes.length === 0;
+  if(!isFirstBatch && !isPremium){
+    openUpsellModal();
+    return;
+  }
   clearError('recipeErrorBox');
   const btn = document.getElementById('genBtn');
   const label = document.getElementById('genBtnLabel');
-  const isFirstBatch = recipes.length === 0;
   btn.disabled = true;
   label.textContent = 'Pensando em receitas...';
 
@@ -780,6 +965,8 @@ function addRecipeMissingToShopping(idx){
 }
 
 loadInventory();
+renderAuthArea();
+initAuth();
 </script>
 </body>
 </html>
