@@ -4,10 +4,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { itemNames } = req.body || {};
-    if (!itemNames) {
-      return res.status(400).json({ error: 'Lista de itens não enviada' });
+    const { itemNames, diet, day } = req.body || {};
+    if (!itemNames || !day) {
+      return res.status(400).json({ error: 'Dados incompletos' });
     }
+    const dietTxt = diet && diet !== 'nenhuma' ? ' IMPORTANTE: todos os pratos devem respeitar a restrição alimentar: ' + diet + '.' : '';
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -18,10 +19,10 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 2500,
+        max_tokens: 1500,
         messages: [{
           role: 'user',
-          content: 'Tenho estes itens na geladeira: ' + itemNames + '. Monte um plano de jantar para os 7 dias da semana (Segunda a Domingo), priorizando usar os itens que tenho. Pode repetir pratos parecidos se fizer sentido para não desperdiçar. Responda SOMENTE com um JSON valido, sem markdown, no formato: [{"day":"Segunda","recipe":"nome do prato","time_minutes":20,"uses":["tomate","ovo"],"missing":["item que falta"],"instructions":"passo a passo bem curto em 2-3 frases"}]. O array deve ter exatamente 7 posicoes, uma para cada dia da semana, comecando em Segunda.'
+          content: 'Tenho estes itens na geladeira: ' + itemNames + '. Monte as 3 refeicoes de ' + day + ' (cafe da manha, almoco e jantar), priorizando usar os itens que tenho.' + dietTxt + ' Responda SOMENTE com um JSON valido, sem markdown, no formato: [{"meal":"Café da manhã","recipe":"nome do prato","time_minutes":10,"uses":["ovo"],"missing":[],"instructions":"passo a passo bem curto em 2-3 frases"},{"meal":"Almoço","recipe":"...","time_minutes":30,"uses":[],"missing":[],"instructions":"..."},{"meal":"Jantar","recipe":"...","time_minutes":20,"uses":[],"missing":[],"instructions":"..."}]. O array deve ter exatamente 3 posicoes, na ordem Café da manhã, Almoço, Jantar.'
         }]
       })
     });
@@ -35,14 +36,14 @@ export default async function handler(req, res) {
     const text = (data.content || []).map(b => b.text || '').join('');
     const clean = text.replace(/```json|```/g, '').trim();
 
-    let plan = [];
+    let meals = [];
     try {
-      plan = JSON.parse(clean);
+      meals = JSON.parse(clean);
     } catch (e) {
-      plan = [];
+      meals = [];
     }
 
-    return res.status(200).json({ plan: Array.isArray(plan) ? plan : [] });
+    return res.status(200).json({ meals: Array.isArray(meals) ? meals : [] });
   } catch (e) {
     return res.status(500).json({ error: 'Erro interno ao montar o plano' });
   }
