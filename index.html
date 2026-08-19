@@ -1766,6 +1766,9 @@ async function loadPlanVideos(plan){
   });
 }
 
+const RECIPE_TARGET = 100;
+const RECIPE_BATCH_MAX = 8;
+
 async function generateRecipes(){
   if(inventory.length === 0){
     showError('recipeErrorBox', 'Adicione pelo menos um item na geladeira antes de pedir receitas.');
@@ -1780,36 +1783,53 @@ async function generateRecipes(){
   const btn = document.getElementById('genBtn');
   const label = document.getElementById('genBtnLabel');
   btn.disabled = true;
-  label.textContent = 'Pensando em receitas...';
 
-  try{
-    const itemNames = inventory.map(i => i.name + (i.qty ? ' (' + i.qty + ')' : '')).join(', ');
-    const excludeNames = recipes.map(r => r.name).filter(Boolean);
-    const peopleVal = document.getElementById('peopleInput') ? document.getElementById('peopleInput').value : '2';
-    const response = await fetch("/api/recipes", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ itemNames, excludeNames, diet: getDiet(), people: peopleVal })
-    });
-    const data = await response.json();
-    if(!response.ok){
-      throw new Error(data.error || "Falha ao gerar receitas");
+  const itemNames = inventory.map(i => i.name + (i.qty ? ' (' + i.qty + ')' : '')).join(', ');
+  const peopleVal = document.getElementById('peopleInput') ? document.getElementById('peopleInput').value : '2';
+  const startCount = recipes.length;
+  let batches = 0;
+  let anyError = null;
+
+  while(recipes.length - startCount < RECIPE_TARGET && batches < RECIPE_BATCH_MAX){
+    label.textContent = 'Buscando receitas... (' + recipes.length + ' até agora)';
+    try{
+      const excludeNames = recipes.map(r => r.name).filter(Boolean);
+      const response = await fetch("/api/recipes", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ itemNames, excludeNames, diet: getDiet(), people: peopleVal })
+      });
+      const data = await response.json();
+      if(!response.ok){
+        throw new Error(data.error || "Falha ao gerar receitas");
+      }
+      const newOnes = Array.isArray(data.recipes) ? data.recipes : [];
+      if(newOnes.length === 0){
+        batches = RECIPE_BATCH_MAX;
+        break;
+      }
+      recipes = recipes.concat(newOnes);
+      document.getElementById('filterRow').style.display = recipes.length ? 'flex' : 'none';
+      renderRecipes();
+    }catch(e){
+      anyError = e;
+      break;
     }
-    const newOnes = Array.isArray(data.recipes) ? data.recipes : [];
-    if(newOnes.length === 0 && isFirstBatch){
-      showError('recipeErrorBox', 'Não encontrei receitas boas com o que você tem agora. Tente adicionar mais itens.');
-    }else if(newOnes.length === 0){
-      showError('recipeErrorBox', 'Não encontrei receitas novas dessa vez. Tente adicionar mais itens pra variar mais.');
-    }
-    recipes = recipes.concat(newOnes);
-    document.getElementById('filterRow').style.display = recipes.length ? 'flex' : 'none';
-    renderRecipes();
-  }catch(e){
-    showError('recipeErrorBox', 'Não consegui gerar as receitas agora. Detalhe: ' + (e && e.message ? e.message : 'erro desconhecido') + '. Tente de novo em instantes.');
-  }finally{
-    btn.disabled = false;
-    label.textContent = recipes.length ? 'Gerar mais receitas' : 'O que eu cozinho com isso?';
+    batches++;
   }
+
+  if(recipes.length === startCount){
+    if(anyError){
+      showError('recipeErrorBox', 'Não consegui gerar as receitas agora. Detalhe: ' + (anyError.message || 'erro desconhecido') + '. Tente de novo em instantes.');
+    }else{
+      showError('recipeErrorBox', 'Não encontrei receitas boas com o que você tem agora. Tente adicionar mais itens.');
+    }
+  }else if(anyError){
+    showError('recipeErrorBox', 'Consegui ' + (recipes.length - startCount) + ' receitas novas, mas parei por um erro no meio do caminho. Pode clicar de novo pra tentar mais.');
+  }
+
+  btn.disabled = false;
+  label.textContent = recipes.length ? 'Gerar mais receitas' : 'O que eu cozinho com isso?';
 }
 
 function setFilter(f){
@@ -1851,7 +1871,7 @@ function renderRecipes(){
       missingLine +
       madeLine +
       '<div class="recipe-body" id="body-' + idx + '">' + escapeHtml(r.instructions || '') + '</div>' +
-      '<div class="video-slot" id="video-' + idx + '"></div>' +
+      '<div class="video-slot" id="video-' + idx + '"><button class="recipe-toggle" onclick="loadSingleVideo(' + idx + ')" id="videobtn-' + idx + '">▶ Carregar vídeo</button></div>' +
       '<div style="display:flex; gap:14px; align-items:center; padding-top:4px; flex-wrap:wrap;">' +
         '<button class="recipe-toggle" onclick="toggleRecipe(' + idx + ')" id="toggle-' + idx + '">Ver modo de preparo</button>' +
         '<button class="recipe-toggle" onclick="openCookMode(' + idx + ')">Modo mãos livres</button>' +
@@ -1870,7 +1890,6 @@ function renderRecipes(){
     '</div>';
   }).join('');
   window.__shownRecipes = shown;
-  loadRecipeVideos(shown);
 }
 
 function copyToClipboard(text, btnId, successLabel){
@@ -2064,28 +2083,28 @@ function closeCookMode(){
   if(overlay) overlay.remove();
 }
 
-async function loadRecipeVideos(shownRecipes){
-  shownRecipes.forEach(async (r, idx) => {
-    const slot = document.getElementById('video-' + idx);
-    if(!slot) return;
-    try{
-      const response = await fetch('/api/youtube-search', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ query: (r.name || '') + ' receita como fazer' })
-      });
-      const data = await response.json();
-      if(response.ok && data.videoId){
-        slot.innerHTML = '<iframe width="100%" height="180" style="border-radius:10px; border:none; margin-top:8px;" src="https://www.youtube.com/embed/' + data.videoId + '" title="Vídeo da receita" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
-      }else{
-        const ytUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((r.name || '') + ' receita como fazer');
-        slot.innerHTML = '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none; display:inline-block; padding-top:8px;" href="' + ytUrl + '" target="_blank" rel="noopener">Ver vídeo no YouTube</a>';
-      }
-    }catch(e){
+async function loadSingleVideo(idx){
+  const r = (window.__shownRecipes || [])[idx];
+  const slot = document.getElementById('video-' + idx);
+  if(!r || !slot) return;
+  slot.innerHTML = '<span style="font-size:12px; color:var(--ink-soft);">Carregando vídeo...</span>';
+  try{
+    const response = await fetch('/api/youtube-search', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ query: (r.name || '') + ' receita como fazer' })
+    });
+    const data = await response.json();
+    if(response.ok && data.videoId){
+      slot.innerHTML = '<iframe width="100%" height="180" style="border-radius:10px; border:none; margin-top:8px;" src="https://www.youtube.com/embed/' + data.videoId + '?autoplay=1" title="Vídeo da receita" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
+    }else{
       const ytUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((r.name || '') + ' receita como fazer');
       slot.innerHTML = '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none; display:inline-block; padding-top:8px;" href="' + ytUrl + '" target="_blank" rel="noopener">Ver vídeo no YouTube</a>';
     }
-  });
+  }catch(e){
+    const ytUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((r.name || '') + ' receita como fazer');
+    slot.innerHTML = '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none; display:inline-block; padding-top:8px;" href="' + ytUrl + '" target="_blank" rel="noopener">Ver vídeo no YouTube</a>';
+  }
 }
 
 function toggleRecipe(idx){
