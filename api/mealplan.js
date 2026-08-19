@@ -18,10 +18,10 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 1500,
+        max_tokens: 2500,
         messages: [{
           role: 'user',
-          content: 'Tenho estes itens na geladeira: ' + itemNames + '. Monte um plano de jantar para os 7 dias da semana (Segunda a Domingo), priorizando usar os itens que tenho. Pode repetir pratos parecidos se fizer sentido para não desperdiçar. Responda SOMENTE com um JSON valido, sem markdown, no formato: [{"day":"Segunda","recipe":"nome do prato","time_minutes":20,"missing":["item que falta"]}]. O array deve ter exatamente 7 posicoes, uma para cada dia da semana, comecando em Segunda.'
+          content: 'Tenho estes itens na geladeira: ' + itemNames + '. Monte um plano de jantar para os 7 dias da semana (Segunda a Domingo), priorizando usar os itens que tenho. Pode repetir pratos parecidos se fizer sentido para não desperdiçar. Responda SOMENTE com um JSON valido, sem markdown, no formato: [{"day":"Segunda","recipe":"nome do prato","time_minutes":20,"uses":["tomate","ovo"],"missing":["item que falta"],"instructions":"passo a passo bem curto em 2-3 frases"}]. O array deve ter exatamente 7 posicoes, uma para cada dia da semana, comecando em Segunda.'
         }]
       })
     });
