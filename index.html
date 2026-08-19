@@ -423,6 +423,7 @@
       <div>
         <p class="brand">Rech<span>ei</span>o</p>
         <p class="tagline">Veja o que tem, descubra o que fazer.</p>
+        <span id="streakBadge" style="display:none; font-size:11px; background:rgba(227,167,43,0.18); color:var(--mustard); padding:3px 9px; border-radius:20px; margin-top:4px;"></span>
       </div>
       <div id="authArea" style="text-align:right;"></div>
     </div>
@@ -435,7 +436,8 @@
   </div>
 
   <section id="viewFridge">
-    <div style="padding-top:16px;">
+    <div id="dailySummary" style="padding-top:16px;"></div>
+    <div style="padding-top:0;">
       <input type="file" id="fileInput" accept="image/*" capture="environment" multiple onchange="handlePhoto(event)">
       <button class="upload-btn" id="uploadBtn" onclick="document.getElementById('fileInput').click()">
         <i class="ti ti-camera"></i> Fotografar a geladeira
@@ -452,6 +454,7 @@
     </button>
 
     <div id="householdArea" style="margin-bottom:12px;"></div>
+    <div id="cookRanking"></div>
 
     <div style="margin-bottom:12px;">
       <p class="section-label" style="margin-top:0;">Restrição alimentar</p>
@@ -500,6 +503,9 @@
     </div>
     <button type="button" class="add-manual" onclick="openLeftoverModal()" style="margin-top:8px;">
       <i class="ti ti-recycle"></i> O que faço com essa sobra?
+    </button>
+    <button type="button" class="add-manual" id="lazyBtn" onclick="generateLazyRecipe()" style="margin-top:8px;">
+      🎲 Me diz uma coisa pra fazer agora
     </button>
     <div id="planErrorBox"></div>
     <div id="weekPlanBox"></div>
@@ -598,6 +604,11 @@
   <div class="modal-bg" id="leftoverModalBg">
     <div class="modal">
       <h3>O que sobrou?</h3>
+      <input type="file" id="leftoverFileInput" accept="image/*" capture="environment" style="display:none;" onchange="handleLeftoverPhoto(event)">
+      <button type="button" class="upload-btn" style="margin-bottom:10px;" onclick="document.getElementById('leftoverFileInput').click()">
+        <i class="ti ti-camera"></i> Fotografar a sobra
+      </button>
+      <p style="text-align:center; font-size:11px; color:var(--ink-soft); margin:0 0 10px;">ou digite</p>
       <input type="text" id="leftoverInput" placeholder="Ex: arroz e frango grelhado de ontem">
       <div id="leftoverError" style="font-size:12px;color:var(--tomato);display:none;margin-bottom:6px;"></div>
       <div class="modal-actions">
@@ -619,6 +630,17 @@
       <div id="expiryResult" style="font-size:13px;color:var(--teal-dark);display:none;margin-bottom:10px;"></div>
       <div class="modal-actions">
         <button class="cancel" onclick="closeExpiryModal()">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="onboardingModalBg">
+    <div class="modal" style="text-align:center;">
+      <h3 id="onboardingTitle" style="font-size:19px;"></h3>
+      <p id="onboardingText" style="font-size:13px; color:var(--ink-soft); margin:0 0 16px;"></p>
+      <div id="onboardingDots" style="margin-bottom:16px;"></div>
+      <div class="modal-actions">
+        <button class="confirm" id="onboardingNextBtn" onclick="onboardingNext()" style="flex:1;">Próximo</button>
       </div>
     </div>
   </div>
@@ -649,6 +671,10 @@ const HISTORY_KEY = 'recheio_history';
 const CONSUMED_KEY = 'recheio_consumed';
 const STALE_DAYS = 4;
 const QUICK_ITEMS = ['ovo','leite','arroz','feijão','tomate','cebola','alho','queijo','manteiga','café'];
+const STREAK_KEY = 'recheio_streak';
+const PREFS_KEY = 'recheio_prefs';
+const ONBOARDED_KEY = 'recheio_onboarded';
+let recipePrefs = {};
 const MADE_LOG_KEY = 'recheio_made_log';
 const NOTIFIED_KEY = 'recheio_notified';
 const AVG_SAVINGS = 25;
@@ -949,12 +975,172 @@ function renderHouseholdArea(){
       '<span style="font-size:12px; color:var(--mustard);">Geladeira da família — código ' + escapeHtml(currentHouseholdCode || '') + '</span>' +
       '<button class="recipe-toggle" style="color:var(--cream);" onclick="leaveHousehold()">Sair</button>' +
     '</div>';
+    renderCookRanking();
   }else{
     box.innerHTML = '<button type="button" class="add-manual" onclick="openHouseholdModal()"><i class="ti ti-users"></i> Compartilhar geladeira com a família</button>';
+    const ranking = document.getElementById('cookRanking');
+    if(ranking) ranking.innerHTML = '';
   }
 }
 
 const DIET_KEY = 'recheio_diet';
+
+function updateStreak(){
+  try{
+    const raw = localStorage.getItem(STREAK_KEY);
+    const data = raw ? JSON.parse(raw) : { count: 0, lastDate: null };
+    const today = new Date().toDateString();
+    if(data.lastDate === today){
+      renderStreakBadge(data.count);
+      return;
+    }
+    const yesterday = new Date(Date.now() - 86400000).toDateString();
+    if(data.lastDate === yesterday){
+      data.count += 1;
+    }else{
+      data.count = 1;
+    }
+    data.lastDate = today;
+    localStorage.setItem(STREAK_KEY, JSON.stringify(data));
+    renderStreakBadge(data.count);
+  }catch(e){
+    // silencioso
+  }
+}
+
+function renderStreakBadge(count){
+  const el = document.getElementById('streakBadge');
+  if(!el) return;
+  if(count >= 2){
+    el.style.display = 'inline-block';
+    el.textContent = '🔥 ' + count + ' dias seguidos';
+  }else{
+    el.style.display = 'none';
+  }
+}
+
+function loadPrefs(){
+  try{
+    const raw = localStorage.getItem(PREFS_KEY);
+    recipePrefs = raw ? JSON.parse(raw) : {};
+  }catch(e){
+    recipePrefs = {};
+  }
+}
+
+function savePrefs(){
+  try{
+    localStorage.setItem(PREFS_KEY, JSON.stringify(recipePrefs));
+  }catch(e){
+    // silencioso
+  }
+}
+
+function setRecipePref(name, value){
+  const key = name.toLowerCase();
+  recipePrefs[key] = recipePrefs[key] === value ? null : value;
+  savePrefs();
+  renderRecipes();
+}
+
+function checkOnboarding(){
+  try{
+    if(localStorage.getItem(ONBOARDED_KEY)) return;
+  }catch(e){}
+  onboardingStep = 0;
+  renderOnboarding();
+  document.getElementById('onboardingModalBg').classList.add('open');
+}
+
+const ONBOARDING_STEPS = [
+  { title: 'Bem-vindo(a) ao Recheio! 🧡', text: 'Fotografe sua geladeira e a gente identifica tudo o que tem lá dentro, sozinho.' },
+  { title: 'Receitas na hora', text: 'Na aba Receitas, gere sugestões com o que você tem — com vídeo, modo passo a passo e até link pra pedir pronto.' },
+  { title: 'Lista de compras e plano da semana', text: 'Quando falta ingrediente, adiciona à lista com um toque. E dá pra montar o cardápio da semana inteira de uma vez.' },
+  { title: 'Compartilhe com a família', text: 'Crie um código e todo mundo em casa vê e edita a mesma geladeira. Bora começar?' }
+];
+let onboardingStep = 0;
+
+function renderOnboarding(){
+  const step = ONBOARDING_STEPS[onboardingStep];
+  document.getElementById('onboardingTitle').textContent = step.title;
+  document.getElementById('onboardingText').textContent = step.text;
+  document.getElementById('onboardingDots').innerHTML = ONBOARDING_STEPS.map((s, i) =>
+    '<span style="display:inline-block; width:6px; height:6px; border-radius:50%; margin:0 3px; background:' + (i === onboardingStep ? 'var(--teal)' : 'rgba(36,38,31,0.2)') + ';"></span>'
+  ).join('');
+  document.getElementById('onboardingNextBtn').textContent = onboardingStep === ONBOARDING_STEPS.length - 1 ? 'Começar' : 'Próximo';
+}
+
+function onboardingNext(){
+  if(onboardingStep >= ONBOARDING_STEPS.length - 1){
+    finishOnboarding();
+    return;
+  }
+  onboardingStep++;
+  renderOnboarding();
+}
+
+function finishOnboarding(){
+  try{ localStorage.setItem(ONBOARDED_KEY, '1'); }catch(e){}
+  document.getElementById('onboardingModalBg').classList.remove('open');
+}
+
+async function generateLazyRecipe(){
+  if(inventory.length === 0){
+    showError('recipeErrorBox', 'Adicione pelo menos um item na geladeira antes.');
+    return;
+  }
+  const btn = document.getElementById('lazyBtn');
+  btn.disabled = true;
+  btn.textContent = 'Pensando...';
+  try{
+    const itemNames = inventory.map(i => i.name).join(', ');
+    const response = await fetch('/api/recipes', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ itemNames, excludeNames: [], diet: getDiet(), people: '2' })
+    });
+    const data = await response.json();
+    if(!response.ok) throw new Error(data.error || 'Falha');
+    const newOnes = Array.isArray(data.recipes) ? data.recipes : [];
+    if(newOnes.length === 0){
+      showError('recipeErrorBox', 'Não pensei em nada agora, tenta de novo.');
+    }else{
+      recipes = [newOnes[0]];
+      document.getElementById('filterRow').style.display = 'flex';
+      renderRecipes();
+    }
+  }catch(e){
+    showError('recipeErrorBox', 'Não consegui pensar em nada agora.');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = '🎲 Me diz uma coisa pra fazer agora';
+  }
+}
+
+function renderDailySummary(){
+  const box = document.getElementById('dailySummary');
+  if(!box) return;
+  const staleCount = inventory.filter(i => {
+    if(i.expiresAt){
+      const daysLeft = Math.ceil((i.expiresAt - Date.now()) / 86400000);
+      return daysLeft <= 1;
+    }
+    const days = Math.floor((Date.now() - i.addedAt) / 86400000);
+    return days >= STALE_DAYS;
+  }).length;
+
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Bom dia' : (hour < 18 ? 'Boa tarde' : 'Boa noite');
+
+  if(inventory.length === 0){
+    box.innerHTML = '';
+    return;
+  }
+  const staleTxt = staleCount > 0 ? staleCount + (staleCount === 1 ? ' item pedindo pra ser usado' : ' itens pedindo pra ser usados') : 'nada vencendo por enquanto';
+  box.innerHTML = '<p style="font-size:12px; color:rgba(247,242,231,0.65); margin:0 0 12px;">' + greeting + '! ' + staleTxt + ' na geladeira.</p>';
+}
+
+
 
 function loadDiet(){
   try{
@@ -1027,6 +1213,7 @@ async function loadInventory(){
   renderSavingsBanner();
   checkExpiryNotifications();
   renderReplenishBanner();
+  renderDailySummary();
   loadDiet();
 }
 
@@ -1546,7 +1733,49 @@ function markAsMade(name){
   saveMadeLog();
   renderSavingsBanner();
 
+  if(currentHouseholdId && currentUser && sbClient){
+    sbClient.from('cook_log').insert({ household_id: currentHouseholdId, user_id: currentUser.id, recipe_name: name }).then(() => {
+      renderCookRanking();
+    });
+  }
+
   renderRecipes();
+}
+
+async function renderCookRanking(){
+  const box = document.getElementById('cookRanking');
+  if(!box) return;
+  if(!currentHouseholdId || !sbClient){
+    box.innerHTML = '';
+    return;
+  }
+  try{
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+    const { data, error } = await sbClient
+      .from('cook_log')
+      .select('user_id')
+      .eq('household_id', currentHouseholdId)
+      .gte('made_at', weekAgo);
+    if(error) throw error;
+    const counts = {};
+    (data || []).forEach(row => {
+      counts[row.user_id] = (counts[row.user_id] || 0) + 1;
+    });
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    if(entries.length === 0){
+      box.innerHTML = '';
+      return;
+    }
+    box.innerHTML = '<div style="background:rgba(227,167,43,0.12); border-radius:10px; padding:10px 14px; margin-bottom:12px;">' +
+      '<p style="font-size:11px; color:var(--mustard); font-weight:600; margin:0 0 6px; text-transform:uppercase;">Quem mais cozinhou essa semana</p>' +
+      entries.map(([uid, count], i) => {
+        const label = uid === currentUser.id ? 'Você' : 'Alguém da família';
+        return '<p style="font-size:12px; color:rgba(247,242,231,0.8); margin:2px 0;">' + (i + 1) + '. ' + label + ' — ' + count + (count === 1 ? ' receita' : ' receitas') + '</p>';
+      }).join('') +
+    '</div>';
+  }catch(e){
+    box.innerHTML = '';
+  }
 }
 
 function saveMadeLog(){
@@ -1569,6 +1798,40 @@ function renderSavingsBanner(){
   const total = count * AVG_SAVINGS;
   box.style.display = 'block';
   box.textContent = '💰 Você economizou cerca de R$' + total + ' essa semana cozinhando em vez de pedir (' + count + (count === 1 ? ' receita feita' : ' receitas feitas') + ')';
+}
+
+async function handleLeftoverPhoto(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const errBox = document.getElementById('leftoverError');
+  const input = document.getElementById('leftoverInput');
+  errBox.style.display = 'none';
+  input.placeholder = 'Identificando a foto...';
+
+  try{
+    const base64 = await fileToBase64(file);
+    const response = await fetch('/api/identify', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ image: base64, mediaType: file.type || 'image/jpeg' })
+    });
+    const data = await response.json();
+    if(!response.ok) throw new Error(data.error || 'Falha');
+    const items = data.items || [];
+    if(items.length === 0){
+      errBox.textContent = 'Não consegui identificar nada nessa foto. Digite manualmente.';
+      errBox.style.display = 'block';
+    }else{
+      const names = items.map(it => it.name).filter(Boolean).join(', ');
+      input.value = names;
+    }
+  }catch(e){
+    errBox.textContent = 'Não consegui analisar a foto. Digite manualmente.';
+    errBox.style.display = 'block';
+  }finally{
+    input.placeholder = 'Ex: arroz e frango grelhado de ontem';
+    event.target.value = '';
+  }
 }
 
 function openLeftoverModal(){
@@ -1673,6 +1936,8 @@ async function handleExpiryPhoto(event){
   }
 }
 
+const WEEK_DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+
 async function generateWeekPlan(){
   if(inventory.length === 0){
     document.getElementById('planErrorBox').innerHTML = '<div class="error-line">Adicione itens na geladeira antes de montar o plano.</div>';
@@ -1682,27 +1947,34 @@ async function generateWeekPlan(){
   const btn = document.getElementById('planBtn');
   const label = document.getElementById('planBtnLabel');
   btn.disabled = true;
-  label.textContent = 'Montando o plano...';
 
-  try{
-    const itemNames = inventory.map(i => i.name).join(', ');
-    const response = await fetch('/api/mealplan', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ itemNames, diet: getDiet() })
-    });
-    const data = await response.json();
-    if(!response.ok){
-      throw new Error(data.error || 'Falha ao montar plano');
+  const itemNames = inventory.map(i => i.name).join(', ');
+  weekPlan = [];
+  renderWeekPlan();
+
+  for(let i = 0; i < WEEK_DAYS.length; i++){
+    const day = WEEK_DAYS[i];
+    label.textContent = 'Montando ' + day + '... (' + (i + 1) + '/7)';
+    try{
+      const response = await fetch('/api/mealplan', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ itemNames, diet: getDiet(), day })
+      });
+      const data = await response.json();
+      if(!response.ok){
+        throw new Error(data.error || 'Falha ao montar plano');
+      }
+      const meals = Array.isArray(data.meals) ? data.meals : [];
+      meals.forEach(m => weekPlan.push(Object.assign({ day }, m)));
+      renderWeekPlan();
+    }catch(e){
+      document.getElementById('planErrorBox').innerHTML = '<div class="error-line">Deu erro montando ' + day + '. Detalhe: ' + (e && e.message ? e.message : '') + ' — o resto dos dias já buscados continua aí.</div>';
     }
-    weekPlan = Array.isArray(data.plan) ? data.plan : [];
-    renderWeekPlan();
-  }catch(e){
-    document.getElementById('planErrorBox').innerHTML = '<div class="error-line">Não consegui montar o plano agora. Detalhe: ' + (e && e.message ? e.message : '') + '</div>';
-  }finally{
-    btn.disabled = false;
-    label.textContent = 'Montar plano da semana';
   }
+
+  btn.disabled = false;
+  label.textContent = 'Montar plano da semana';
 }
 
 function renderWeekPlan(){
@@ -1711,28 +1983,38 @@ function renderWeekPlan(){
     box.innerHTML = '';
     return;
   }
+  const byDay = {};
+  weekPlan.forEach((m, idx) => {
+    m.__idx = idx;
+    if(!byDay[m.day]) byDay[m.day] = [];
+    byDay[m.day].push(m);
+  });
+
   box.innerHTML = '<div style="margin-top:14px;">' +
-    weekPlan.map((d, idx) => {
-      const missing = d.missing || [];
-      const complete = missing.length === 0;
-      const badge = complete ? '<span class="badge complete">já dá pra fazer</span>' : '<span class="badge missing">falta ' + missing.length + '</span>';
-      const missingLine = complete ? '' : '<p class="recipe-missing">Falta: ' + missing.map(escapeHtml).join(', ') + '</p>';
-      const ifoodUrl = 'https://www.ifood.com.br/busca?q=' + encodeURIComponent(d.recipe || '');
-      return '<div class="recipe-card">' +
-        '<p style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--teal-dark); font-weight:600; margin:0 0 4px;">' + escapeHtml(d.day || '') + '</p>' +
-        '<div class="recipe-top"><p class="recipe-name">' + escapeHtml(d.recipe || '') + '</p>' + badge + '</div>' +
-        '<p class="recipe-meta">' + (d.time_minutes || '?') + ' min</p>' +
-        missingLine +
-        '<div class="recipe-body" id="planbody-' + idx + '">' + escapeHtml(d.instructions || '') + '</div>' +
-        '<div class="video-slot" id="planvideo-' + idx + '"></div>' +
-        '<div style="display:flex; gap:14px; align-items:center; padding-top:6px; flex-wrap:wrap;">' +
-          '<button class="recipe-toggle" onclick="togglePlanRecipe(' + idx + ')" id="plantoggle-' + idx + '">Ver modo de preparo</button>' +
-          '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none;" href="' + ifoodUrl + '" target="_blank" rel="noopener">Pedir pronto no iFood</a>' +
-        '</div>' +
-      '</div>';
+    Object.keys(byDay).map(day => {
+      const mealsHtml = byDay[day].map(m => {
+        const idx = m.__idx;
+        const missing = m.missing || [];
+        const complete = missing.length === 0;
+        const badge = complete ? '<span class="badge complete">já dá pra fazer</span>' : '<span class="badge missing">falta ' + missing.length + '</span>';
+        const missingLine = complete ? '' : '<p class="recipe-missing">Falta: ' + missing.map(escapeHtml).join(', ') + '</p>';
+        const ifoodUrl = 'https://www.ifood.com.br/busca?q=' + encodeURIComponent(m.recipe || '');
+        return '<div class="recipe-card">' +
+          '<p style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--teal-dark); font-weight:600; margin:0 0 4px;">' + escapeHtml(m.meal || '') + '</p>' +
+          '<div class="recipe-top"><p class="recipe-name">' + escapeHtml(m.recipe || '') + '</p>' + badge + '</div>' +
+          '<p class="recipe-meta">' + (m.time_minutes || '?') + ' min</p>' +
+          missingLine +
+          '<div class="recipe-body" id="planbody-' + idx + '">' + escapeHtml(m.instructions || '') + '</div>' +
+          '<div class="video-slot" id="planvideo-' + idx + '"><button class="recipe-toggle" onclick="loadSinglePlanVideo(' + idx + ')" id="planvideobtn-' + idx + '">▶ Carregar vídeo</button></div>' +
+          '<div style="display:flex; gap:14px; align-items:center; padding-top:6px; flex-wrap:wrap;">' +
+            '<button class="recipe-toggle" onclick="togglePlanRecipe(' + idx + ')" id="plantoggle-' + idx + '">Ver modo de preparo</button>' +
+            '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none;" href="' + ifoodUrl + '" target="_blank" rel="noopener">Pedir pronto no iFood</a>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+      return '<p class="section-label" style="color:var(--mustard);">' + escapeHtml(day) + '</p>' + mealsHtml;
     }).join('') +
   '</div>';
-  loadPlanVideos(weekPlan);
 }
 
 function togglePlanRecipe(idx){
@@ -1742,28 +2024,28 @@ function togglePlanRecipe(idx){
   btn.textContent = open ? 'Esconder modo de preparo' : 'Ver modo de preparo';
 }
 
-async function loadPlanVideos(plan){
-  plan.forEach(async (d, idx) => {
-    const slot = document.getElementById('planvideo-' + idx);
-    if(!slot) return;
-    try{
-      const response = await fetch('/api/youtube-search', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ query: (d.recipe || '') + ' receita como fazer' })
-      });
-      const data = await response.json();
-      if(response.ok && data.videoId){
-        slot.innerHTML = '<iframe width="100%" height="180" style="border-radius:10px; border:none; margin-top:8px;" src="https://www.youtube.com/embed/' + data.videoId + '" title="Vídeo da receita" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
-      }else{
-        const ytUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((d.recipe || '') + ' receita como fazer');
-        slot.innerHTML = '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none; display:inline-block; padding-top:8px;" href="' + ytUrl + '" target="_blank" rel="noopener">Ver vídeo no YouTube</a>';
-      }
-    }catch(e){
-      const ytUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((d.recipe || '') + ' receita como fazer');
+async function loadSinglePlanVideo(idx){
+  const m = weekPlan[idx];
+  const slot = document.getElementById('planvideo-' + idx);
+  if(!m || !slot) return;
+  slot.innerHTML = '<span style="font-size:12px; color:var(--ink-soft);">Carregando vídeo...</span>';
+  try{
+    const response = await fetch('/api/youtube-search', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ query: (m.recipe || '') + ' receita como fazer' })
+    });
+    const data = await response.json();
+    if(response.ok && data.videoId){
+      slot.innerHTML = '<iframe width="100%" height="180" style="border-radius:10px; border:none; margin-top:8px;" src="https://www.youtube.com/embed/' + data.videoId + '?autoplay=1" title="Vídeo da receita" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
+    }else{
+      const ytUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((m.recipe || '') + ' receita como fazer');
       slot.innerHTML = '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none; display:inline-block; padding-top:8px;" href="' + ytUrl + '" target="_blank" rel="noopener">Ver vídeo no YouTube</a>';
     }
-  });
+  }catch(e){
+    const ytUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((m.recipe || '') + ' receita como fazer');
+    slot.innerHTML = '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none; display:inline-block; padding-top:8px;" href="' + ytUrl + '" target="_blank" rel="noopener">Ver vídeo no YouTube</a>';
+  }
 }
 
 const RECIPE_TARGET = 100;
@@ -1794,10 +2076,12 @@ async function generateRecipes(){
     label.textContent = 'Buscando receitas... (' + recipes.length + ' até agora)';
     try{
       const excludeNames = recipes.map(r => r.name).filter(Boolean);
+      const liked = Object.keys(recipePrefs).filter(k => recipePrefs[k] === 'like');
+      const disliked = Object.keys(recipePrefs).filter(k => recipePrefs[k] === 'dislike');
       const response = await fetch("/api/recipes", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ itemNames, excludeNames, diet: getDiet(), people: peopleVal })
+        body: JSON.stringify({ itemNames, excludeNames, diet: getDiet(), people: peopleVal, liked, disliked })
       });
       const data = await response.json();
       if(!response.ok){
@@ -1865,8 +2149,13 @@ function renderRecipes(){
     const missingBtn = complete ? '' : '<button class="recipe-toggle" onclick="addRecipeMissingToShopping(' + idx + ')" id="shopadd-' + idx + '">+ Add à lista de compras</button>';
     const copyMissingBtn = complete ? '' : '<button class="recipe-toggle" onclick="copyMissingIngredients(' + idx + ')" id="copymiss-' + idx + '">Copiar o que falta</button>';
     const subBtn = complete ? '' : '<button class="recipe-toggle" onclick="suggestSubstitutes(' + idx + ')" id="subbtn-' + idx + '">Posso trocar por quê?</button>';
+    const prefKey = (r.name || '').toLowerCase();
+    const pref = recipePrefs[prefKey];
+    const likeBtn = '<button aria-label="Curtir" onclick="setRecipePref(\'' + escapeHtml(r.name || '').replace(/'/g, "\\'") + '\', \'like\')" style="background:none; border:none; cursor:pointer; font-size:16px; opacity:' + (pref === 'like' ? '1' : '0.4') + ';">👍</button>';
+    const dislikeBtn = '<button aria-label="Não curtir" onclick="setRecipePref(\'' + escapeHtml(r.name || '').replace(/'/g, "\\'") + '\', \'dislike\')" style="background:none; border:none; cursor:pointer; font-size:16px; opacity:' + (pref === 'dislike' ? '1' : '0.4') + ';">👎</button>';
     return '<div class="recipe-card">' +
-      '<div class="recipe-top"><p class="recipe-name">' + escapeHtml(r.name || '') + '</p>' + badge + '</div>' +
+      '<div class="recipe-top"><p class="recipe-name">' + escapeHtml(r.name || '') + '</p><span style="flex-shrink:0;">' + likeBtn + dislikeBtn + '</span></div>' +
+      '<div style="margin:-6px 0 4px;">' + badge + '</div>' +
       '<p class="recipe-meta">' + (r.time_minutes || '?') + ' min · usa ' + (r.uses ? r.uses.length : 0) + ' item(ns) que você tem</p>' +
       missingLine +
       madeLine +
@@ -2127,7 +2416,10 @@ function addRecipeMissingToShopping(idx){
 loadInventory();
 renderAuthArea();
 renderHouseholdArea();
+loadPrefs();
+updateStreak();
 initAuth();
+checkOnboarding();
 </script>
 </body>
 </html>
