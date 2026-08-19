@@ -446,6 +446,12 @@
 
     <div class="quick-chips" id="quickChips"></div>
 
+    <button type="button" class="add-manual" id="notifyBtn" onclick="enableExpiryNotifications()" style="margin-bottom:12px;">
+      <i class="ti ti-bell"></i> Ativar avisos antes de vencer
+    </button>
+
+    <div id="householdArea" style="margin-bottom:12px;"></div>
+
     <div id="errorBox"></div>
 
     <div class="stat-row" id="statRow" style="display:none;">
@@ -465,11 +471,17 @@
   </section>
 
   <section id="viewRecipes" style="display:none;">
-    <div style="padding-top:16px;">
-      <button class="gen-btn" id="genBtn" onclick="generateRecipes()">
+    <p id="savingsBanner" style="display:none; font-size:12px; background:rgba(227,167,43,0.15); color:var(--mustard); border-radius:10px; padding:10px 14px; margin:16px 0 0;"></p>
+    <div style="padding-top:16px; display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="gen-btn" id="genBtn" onclick="generateRecipes()" style="flex:1; min-width:180px;">
         <i class="ti ti-tools-kitchen-2"></i> <span id="genBtnLabel">O que eu cozinho com isso?</span>
       </button>
+      <button class="gen-btn" id="planBtn" onclick="generateWeekPlan()" style="flex:1; min-width:180px;">
+        <i class="ti ti-calendar"></i> <span id="planBtnLabel">Montar plano da semana</span>
+      </button>
     </div>
+    <div id="planErrorBox"></div>
+    <div id="weekPlanBox"></div>
     <div id="recipeErrorBox"></div>
     <div class="filter-row" id="filterRow" style="display:none;">
       <button class="filter-chip active" data-filter="todas" onclick="setFilter('todas')">Todas</button>
@@ -541,6 +553,26 @@
       </div>
     </div>
   </div>
+
+  <div class="modal-bg" id="householdModalBg">
+    <div class="modal">
+      <div class="tabs" style="padding:0 0 14px;">
+        <button class="tab active" id="houseTabCreate" onclick="switchHouseholdTab('create')">Criar código</button>
+        <button class="tab" id="houseTabJoin" onclick="switchHouseholdTab('join')">Entrar com código</button>
+      </div>
+      <div id="houseCreatePane">
+        <p style="font-size:13px; color:var(--ink-soft); margin:0 0 14px;">Cria um código pra compartilhar a geladeira com sua família. Quem tiver o código pode ver e editar os mesmos itens.</p>
+      </div>
+      <div id="houseJoinPane" style="display:none;">
+        <input type="text" id="householdCodeInput" placeholder="Cole o código aqui (ex: A1B2C3)">
+      </div>
+      <div id="householdError" style="font-size:12px;color:var(--tomato);display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="cancel" onclick="closeHouseholdModal()">Cancelar</button>
+        <button class="confirm" id="householdSubmitBtn" onclick="submitHousehold()">Criar código</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="undo-bar" id="undoBar">
@@ -568,6 +600,14 @@ const HISTORY_KEY = 'recheio_history';
 const CONSUMED_KEY = 'recheio_consumed';
 const STALE_DAYS = 4;
 const QUICK_ITEMS = ['ovo','leite','arroz','feijão','tomate','cebola','alho','queijo','manteiga','café'];
+const MADE_LOG_KEY = 'recheio_made_log';
+const NOTIFIED_KEY = 'recheio_notified';
+const AVG_SAVINGS = 25;
+let madeLog = [];
+let notifiedIds = [];
+let currentHouseholdId = null;
+let currentHouseholdCode = null;
+let weekPlan = [];
 
 const SUPABASE_URL = 'https://cowfkzagvuhxmhhzqmcs.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_jkhtR0oCr6ymGdZzPWdBOg_jRYb5xZ7';
@@ -585,6 +625,7 @@ let authMode = 'login';
 async function initAuth(){
   if(!sbClient){
     document.getElementById('authArea').innerHTML = '<span style="font-size:10px; color:#F2B8AC;">login indisponível</span>';
+    renderHouseholdArea();
     return;
   }
   try{
@@ -595,16 +636,21 @@ async function initAuth(){
   }
   if(currentUser){
     await checkSubscription();
+    await checkHousehold();
+  }else{
+    renderHouseholdArea();
   }
   renderAuthArea();
 
   sbClient.auth.onAuthStateChange((event, session) => {
     currentUser = session ? session.user : null;
     if(currentUser){
-      checkSubscription().then(renderAuthArea);
+      Promise.all([checkSubscription(), checkHousehold()]).then(renderAuthArea);
     }else{
       isPremium = false;
+      currentHouseholdId = null;
       renderAuthArea();
+      renderHouseholdArea();
     }
   });
 }
@@ -716,6 +762,149 @@ function closeUpsellModal(){
   document.getElementById('upsellModalBg').classList.remove('open');
 }
 
+let householdMode = 'create';
+
+function openHouseholdModal(){
+  if(!currentUser){
+    openAuthModal();
+    return;
+  }
+  householdMode = 'create';
+  document.getElementById('householdCodeInput').value = '';
+  document.getElementById('householdError').style.display = 'none';
+  switchHouseholdTab('create');
+  document.getElementById('householdModalBg').classList.add('open');
+}
+function closeHouseholdModal(){
+  document.getElementById('householdModalBg').classList.remove('open');
+}
+function switchHouseholdTab(mode){
+  householdMode = mode;
+  document.getElementById('houseTabCreate').classList.toggle('active', mode === 'create');
+  document.getElementById('houseTabJoin').classList.toggle('active', mode === 'join');
+  document.getElementById('houseCreatePane').style.display = mode === 'create' ? 'block' : 'none';
+  document.getElementById('houseJoinPane').style.display = mode === 'join' ? 'block' : 'none';
+  document.getElementById('householdSubmitBtn').textContent = mode === 'create' ? 'Criar código' : 'Entrar';
+  document.getElementById('householdError').style.display = 'none';
+}
+
+function genHouseholdCode(){
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+async function submitHousehold(){
+  const errBox = document.getElementById('householdError');
+  errBox.style.display = 'none';
+  const btn = document.getElementById('householdSubmitBtn');
+  btn.disabled = true;
+  try{
+    if(householdMode === 'create'){
+      const code = genHouseholdCode();
+      const { data, error } = await sbClient.from('households').insert({ code, created_by: currentUser.id }).select().single();
+      if(error) throw error;
+      await sbClient.from('household_members').insert({ household_id: data.id, user_id: currentUser.id });
+      currentHouseholdId = data.id;
+      currentHouseholdCode = data.code;
+      await migrateLocalItemsToHousehold();
+    }else{
+      const code = document.getElementById('householdCodeInput').value.trim().toUpperCase();
+      if(!code){ throw new Error('Digite um código.'); }
+      const { data, error } = await sbClient.from('households').select('id, code').eq('code', code).maybeSingle();
+      if(error || !data) throw new Error('Código não encontrado. Confira e tente de novo.');
+      await sbClient.from('household_members').insert({ household_id: data.id, user_id: currentUser.id });
+      currentHouseholdId = data.id;
+      currentHouseholdCode = data.code;
+      await loadHouseholdItems();
+    }
+    renderHouseholdArea();
+    closeHouseholdModal();
+  }catch(e){
+    errBox.textContent = (e && e.message) ? e.message : 'Algo deu errado.';
+    errBox.style.display = 'block';
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+async function migrateLocalItemsToHousehold(){
+  if(inventory.length > 0){
+    try{
+      const rows = inventory.map(i => ({ household_id: currentHouseholdId, name: i.name, qty: i.qty || '', location: i.location || 'geladeira', added_by: currentUser.id }));
+      await sbClient.from('fridge_items').insert(rows);
+    }catch(e){
+      // segue mesmo se a migração falhar
+    }
+  }
+  await loadHouseholdItems();
+}
+
+async function loadHouseholdItems(){
+  try{
+    const { data, error } = await sbClient.from('fridge_items').select('*').eq('household_id', currentHouseholdId).order('added_at', { ascending: true });
+    if(error) throw error;
+    inventory = (data || []).map(row => ({
+      id: row.id,
+      name: row.name,
+      qty: row.qty || '',
+      addedAt: new Date(row.added_at).getTime(),
+      location: row.location || 'geladeira'
+    }));
+    renderInventory();
+  }catch(e){
+    showError('errorBox', 'Não consegui carregar a geladeira da família agora.');
+  }
+}
+
+async function leaveHousehold(){
+  if(!currentHouseholdId || !currentUser) return;
+  try{
+    await sbClient.from('household_members').delete().eq('household_id', currentHouseholdId).eq('user_id', currentUser.id);
+  }catch(e){}
+  currentHouseholdId = null;
+  currentHouseholdCode = null;
+  await loadInventory();
+  renderHouseholdArea();
+}
+
+async function checkHousehold(){
+  if(!currentUser || !sbClient){
+    currentHouseholdId = null;
+    renderHouseholdArea();
+    return;
+  }
+  try{
+    const { data } = await sbClient
+      .from('household_members')
+      .select('household_id, households(code)')
+      .eq('user_id', currentUser.id)
+      .maybeSingle();
+    if(data){
+      currentHouseholdId = data.household_id;
+      currentHouseholdCode = data.households ? data.households.code : null;
+      await loadHouseholdItems();
+    }else{
+      currentHouseholdId = null;
+      currentHouseholdCode = null;
+    }
+  }catch(e){
+    currentHouseholdId = null;
+  }
+  renderHouseholdArea();
+}
+
+function renderHouseholdArea(){
+  const box = document.getElementById('householdArea');
+  if(!box) return;
+  if(currentHouseholdId){
+    box.innerHTML = '<div style="display:flex; align-items:center; justify-content:space-between; background:rgba(227,167,43,0.12); border-radius:10px; padding:10px 14px;">' +
+      '<span style="font-size:12px; color:var(--mustard);">Geladeira da família — código ' + escapeHtml(currentHouseholdCode || '') + '</span>' +
+      '<button class="recipe-toggle" style="color:var(--cream);" onclick="leaveHousehold()">Sair</button>' +
+    '</div>';
+  }else{
+    box.innerHTML = '<button type="button" class="add-manual" onclick="openHouseholdModal()"><i class="ti ti-users"></i> Compartilhar geladeira com a família</button>';
+  }
+}
+
 async function loadInventory(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -741,9 +930,61 @@ async function loadInventory(){
   }catch(e){
     consumedLog = [];
   }
+  try{
+    const rawMadeLog = localStorage.getItem(MADE_LOG_KEY);
+    madeLog = rawMadeLog ? JSON.parse(rawMadeLog) : [];
+  }catch(e){
+    madeLog = [];
+  }
+  try{
+    const rawNotified = localStorage.getItem(NOTIFIED_KEY);
+    notifiedIds = rawNotified ? JSON.parse(rawNotified) : [];
+  }catch(e){
+    notifiedIds = [];
+  }
   renderInventory();
   renderShoppingList();
   renderQuickChips();
+  renderSavingsBanner();
+  checkExpiryNotifications();
+}
+
+function saveNotifiedIds(){
+  try{
+    localStorage.setItem(NOTIFIED_KEY, JSON.stringify(notifiedIds));
+  }catch(e){
+    // silencioso
+  }
+}
+
+async function enableExpiryNotifications(){
+  if(!('Notification' in window)){
+    alert('Seu navegador não suporta avisos. Tente pelo Chrome ou outro navegador atualizado.');
+    return;
+  }
+  const permission = await Notification.requestPermission();
+  const btn = document.getElementById('notifyBtn');
+  if(permission === 'granted'){
+    if(btn) btn.textContent = 'Avisos ativados ✓';
+    checkExpiryNotifications();
+  }else{
+    if(btn) btn.textContent = 'Avisos bloqueados pelo navegador';
+  }
+}
+
+function checkExpiryNotifications(){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  inventory.forEach((item, idx) => {
+    const days = Math.floor((Date.now() - item.addedAt) / 86400000);
+    const notifyId = item.name + '-' + item.addedAt;
+    if(days >= (STALE_DAYS - 1) && !notifiedIds.includes(notifyId)){
+      try{
+        new Notification('Recheio', { body: '"' + item.name + '" está parado há um tempo na sua geladeira — hora de usar antes que estrague!' });
+      }catch(e){}
+      notifiedIds.push(notifyId);
+      saveNotifiedIds();
+    }
+  });
 }
 
 function renderQuickChips(){
@@ -753,7 +994,16 @@ function renderQuickChips(){
   ).join('');
 }
 
-function quickAddItem(name){
+async function quickAddItem(name){
+  if(currentHouseholdId){
+    try{
+      await sbClient.from('fridge_items').insert({ household_id: currentHouseholdId, name, qty: '', location: 'geladeira', added_by: currentUser.id });
+      await loadHouseholdItems();
+    }catch(e){
+      showError('errorBox', 'Não consegui adicionar na geladeira da família agora.');
+    }
+    return;
+  }
   inventory.push({name, qty: '', addedAt: Date.now(), location: 'geladeira'});
   saveInventory();
   renderInventory();
@@ -870,8 +1120,17 @@ function escapeHtml(s){
   return d.innerHTML;
 }
 
-function removeItem(idx){
+async function removeItem(idx){
   const removed = inventory[idx];
+  if(currentHouseholdId && removed.id){
+    try{
+      await sbClient.from('fridge_items').delete().eq('id', removed.id);
+      await loadHouseholdItems();
+    }catch(e){
+      showError('errorBox', 'Não consegui remover da geladeira da família agora.');
+    }
+    return;
+  }
   inventory.splice(idx, 1);
   saveInventory();
   renderInventory();
@@ -935,7 +1194,7 @@ function setModalLocation(loc){
   document.getElementById('locFridgeBtn').classList.toggle('active', loc === 'geladeira');
   document.getElementById('locFreezerBtn').classList.toggle('active', loc === 'freezer');
 }
-function confirmAddItem(){
+async function confirmAddItem(){
   const name = document.getElementById('modalName').value.trim();
   const qty = document.getElementById('modalQty').value.trim();
   if(!name){
@@ -944,6 +1203,24 @@ function confirmAddItem(){
     err.style.display = 'block';
     return;
   }
+
+  if(currentHouseholdId){
+    try{
+      if(editingIndex !== null && inventory[editingIndex] && inventory[editingIndex].id){
+        await sbClient.from('fridge_items').update({ name, qty, location: modalLocation }).eq('id', inventory[editingIndex].id);
+      }else{
+        await sbClient.from('fridge_items').insert({ household_id: currentHouseholdId, name, qty, location: modalLocation, added_by: currentUser.id });
+      }
+      await loadHouseholdItems();
+      closeAddModal();
+    }catch(e){
+      const err = document.getElementById('modalError');
+      err.textContent = 'Não consegui salvar na geladeira da família agora.';
+      err.style.display = 'block';
+    }
+    return;
+  }
+
   if(editingIndex !== null && inventory[editingIndex]){
     inventory[editingIndex].name = name;
     inventory[editingIndex].qty = qty;
@@ -1123,7 +1400,87 @@ function markAsMade(name){
   madeHistory[key].count += 1;
   madeHistory[key].lastMade = Date.now();
   saveHistory();
+
+  madeLog.push({ name, madeAt: Date.now() });
+  saveMadeLog();
+  renderSavingsBanner();
+
   renderRecipes();
+}
+
+function saveMadeLog(){
+  try{
+    localStorage.setItem(MADE_LOG_KEY, JSON.stringify(madeLog));
+  }catch(e){
+    // silencioso
+  }
+}
+
+function renderSavingsBanner(){
+  const box = document.getElementById('savingsBanner');
+  if(!box) return;
+  const weekAgo = Date.now() - (7 * 86400000);
+  const count = madeLog.filter(m => m.madeAt >= weekAgo).length;
+  if(count === 0){
+    box.style.display = 'none';
+    return;
+  }
+  const total = count * AVG_SAVINGS;
+  box.style.display = 'block';
+  box.textContent = '💰 Você economizou cerca de R$' + total + ' essa semana cozinhando em vez de pedir (' + count + (count === 1 ? ' receita feita' : ' receitas feitas') + ')';
+}
+
+async function generateWeekPlan(){
+  if(inventory.length === 0){
+    document.getElementById('planErrorBox').innerHTML = '<div class="error-line">Adicione itens na geladeira antes de montar o plano.</div>';
+    return;
+  }
+  document.getElementById('planErrorBox').innerHTML = '';
+  const btn = document.getElementById('planBtn');
+  const label = document.getElementById('planBtnLabel');
+  btn.disabled = true;
+  label.textContent = 'Montando o plano...';
+
+  try{
+    const itemNames = inventory.map(i => i.name).join(', ');
+    const response = await fetch('/api/mealplan', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ itemNames })
+    });
+    const data = await response.json();
+    if(!response.ok){
+      throw new Error(data.error || 'Falha ao montar plano');
+    }
+    weekPlan = Array.isArray(data.plan) ? data.plan : [];
+    renderWeekPlan();
+  }catch(e){
+    document.getElementById('planErrorBox').innerHTML = '<div class="error-line">Não consegui montar o plano agora. Detalhe: ' + (e && e.message ? e.message : '') + '</div>';
+  }finally{
+    btn.disabled = false;
+    label.textContent = 'Montar plano da semana';
+  }
+}
+
+function renderWeekPlan(){
+  const box = document.getElementById('weekPlanBox');
+  if(!weekPlan || weekPlan.length === 0){
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = '<div class="card" style="margin-top:14px;">' +
+    weekPlan.map(d => {
+      const missingTxt = d.missing && d.missing.length ? '<p class="recipe-missing" style="margin:2px 0 0;">Falta: ' + d.missing.map(escapeHtml).join(', ') + '</p>' : '';
+      return '<div class="item-row" style="align-items:flex-start;">' +
+        '<div style="width:64px; flex-shrink:0;"><p class="item-name" style="font-weight:600;">' + escapeHtml(d.day || '') + '</p></div>' +
+        '<div style="flex:1;">' +
+          '<p class="item-name">' + escapeHtml(d.recipe || '') + '</p>' +
+          '<p class="item-meta">' + (d.time_minutes || '?') + ' min</p>' +
+          missingTxt +
+        '</div>' +
+      '</div>';
+    }).join('') +
+  '</div>';
 }
 
 async function generateRecipes(){
@@ -1203,6 +1560,7 @@ function renderRecipes(){
     const madeLine = hist && hist.count > 0 ? '<p class="made-badge">✓ Você já fez essa ' + hist.count + (hist.count === 1 ? ' vez' : ' vezes') + '</p>' : '';
     const missingBtn = complete ? '' : '<button class="recipe-toggle" onclick="addRecipeMissingToShopping(' + idx + ')" id="shopadd-' + idx + '">+ Add à lista de compras</button>';
     const copyMissingBtn = complete ? '' : '<button class="recipe-toggle" onclick="copyMissingIngredients(' + idx + ')" id="copymiss-' + idx + '">Copiar o que falta</button>';
+    const subBtn = complete ? '' : '<button class="recipe-toggle" onclick="suggestSubstitutes(' + idx + ')" id="subbtn-' + idx + '">Posso trocar por quê?</button>';
     return '<div class="recipe-card">' +
       '<div class="recipe-top"><p class="recipe-name">' + escapeHtml(r.name || '') + '</p>' + badge + '</div>' +
       '<p class="recipe-meta">' + (r.time_minutes || '?') + ' min · usa ' + (r.uses ? r.uses.length : 0) + ' item(ns) que você tem</p>' +
@@ -1212,6 +1570,7 @@ function renderRecipes(){
       '<div class="video-slot" id="video-' + idx + '"></div>' +
       '<div style="display:flex; gap:14px; align-items:center; padding-top:4px; flex-wrap:wrap;">' +
         '<button class="recipe-toggle" onclick="toggleRecipe(' + idx + ')" id="toggle-' + idx + '">Ver modo de preparo</button>' +
+        '<button class="recipe-toggle" onclick="openCookMode(' + idx + ')">Modo mãos livres</button>' +
         '<a class="recipe-toggle" style="color:var(--teal-dark); text-decoration:none;" href="' + waUrl + '" target="_blank" rel="noopener">Chamar amigo</a>' +
         '<button class="recipe-toggle" onclick="markAsMade(\'' + escapeHtml(r.name || '').replace(/'/g, "\\'") + '\')">Eu fiz essa</button>' +
       '</div>' +
@@ -1219,7 +1578,9 @@ function renderRecipes(){
         '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none;" href="' + ifoodUrl + '" target="_blank" rel="noopener">Pedir pronto no iFood</a>' +
         '<button class="recipe-toggle" onclick="copyRecipeName(' + idx + ')" id="copyname-' + idx + '">Copiar nome do prato</button>' +
         copyMissingBtn +
+        subBtn +
       '</div>' +
+      '<div id="subs-' + idx + '"></div>' +
       missingBtn +
     '</div>';
   }).join('');
@@ -1267,6 +1628,85 @@ function copyMissingIngredients(idx){
   copyToClipboard(r.missing.join(', '), 'copymiss-' + idx, 'Copiado ✓');
 }
 
+async function suggestSubstitutes(idx){
+  const r = (window.__shownRecipes || [])[idx];
+  if(!r || !r.missing || r.missing.length === 0) return;
+  const box = document.getElementById('subs-' + idx);
+  const btn = document.getElementById('subbtn-' + idx);
+  btn.disabled = true;
+  btn.textContent = 'Pensando...';
+  try{
+    const have = inventory.map(i => i.name);
+    const response = await fetch('/api/substitute', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ missing: r.missing, have })
+    });
+    const data = await response.json();
+    if(!response.ok) throw new Error(data.error || 'Falha');
+    const subs = Array.isArray(data.substitutes) ? data.substitutes : [];
+    if(subs.length === 0){
+      box.innerHTML = '<p class="recipe-missing">Não achei uma troca boa dessa vez.</p>';
+    }else{
+      box.innerHTML = '<div style="background:var(--cream-dim); border-radius:10px; padding:10px 12px; margin-top:8px;">' +
+        subs.map(s => '<p style="font-size:12px; margin:3px 0; color:var(--ink);"><strong>' + escapeHtml(s.ingredient || '') + '</strong> → ' + escapeHtml(s.substitute || '') + '</p>').join('') +
+      '</div>';
+    }
+  }catch(e){
+    box.innerHTML = '<p class="recipe-missing">Não consegui buscar substitutos agora.</p>';
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Posso trocar por quê?';
+  }
+}
+
+function openCookMode(idx){
+  const r = (window.__shownRecipes || [])[idx];
+  if(!r) return;
+  const sentences = (r.instructions || '').split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
+  const steps = sentences.length > 0 ? sentences : ['Sem instruções detalhadas para essa receita.'];
+  let current = 0;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'cookModeOverlay';
+  overlay.style.cssText = 'position:fixed; inset:0; background:var(--bg-deep); z-index:50; display:flex; flex-direction:column; padding:24px;';
+
+  function render(){
+    overlay.innerHTML =
+      '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">' +
+        '<p style="font-family:Fraunces,serif; font-size:18px; color:var(--cream); margin:0;">' + escapeHtml(r.name || '') + '</p>' +
+        '<button onclick="closeCookMode()" style="background:none; border:none; color:var(--cream); font-size:24px; cursor:pointer;">&times;</button>' +
+      '</div>' +
+      '<div style="flex:1; display:flex; align-items:center; justify-content:center; text-align:center;">' +
+        '<p style="font-size:26px; line-height:1.4; color:var(--cream); font-family:Fraunces,serif;">' + escapeHtml(steps[current]) + '</p>' +
+      '</div>' +
+      '<p style="text-align:center; color:rgba(247,242,231,0.5); font-size:13px; margin-bottom:16px;">Passo ' + (current + 1) + ' de ' + steps.length + '</p>' +
+      '<div style="display:flex; gap:10px;">' +
+        '<button onclick="cookModeStep(-1)" style="flex:1; padding:16px; border-radius:12px; border:none; background:var(--cream-dim); color:var(--ink); font-size:16px; font-weight:600;" ' + (current === 0 ? 'disabled style="opacity:0.4;"' : '') + '>← Anterior</button>' +
+        '<button onclick="cookModeStep(1)" style="flex:1; padding:16px; border-radius:12px; border:none; background:var(--mustard); color:var(--mustard-dark); font-size:16px; font-weight:600;">' + (current === steps.length - 1 ? 'Concluir ✓' : 'Próximo →') + '</button>' +
+      '</div>';
+  }
+
+  window.__cookSteps = steps;
+  window.__cookCurrent = () => current;
+  window.cookModeStep = function(dir){
+    if(current === steps.length - 1 && dir === 1){
+      closeCookMode();
+      return;
+    }
+    current = Math.max(0, Math.min(steps.length - 1, current + dir));
+    render();
+  };
+
+  render();
+  document.body.appendChild(overlay);
+}
+
+function closeCookMode(){
+  const overlay = document.getElementById('cookModeOverlay');
+  if(overlay) overlay.remove();
+}
+
 async function loadRecipeVideos(shownRecipes){
   shownRecipes.forEach(async (r, idx) => {
     const slot = document.getElementById('video-' + idx);
@@ -1310,6 +1750,7 @@ function addRecipeMissingToShopping(idx){
 
 loadInventory();
 renderAuthArea();
+renderHouseholdArea();
 initAuth();
 </script>
 </body>
