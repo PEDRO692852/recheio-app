@@ -1468,19 +1468,59 @@ function renderWeekPlan(){
     box.innerHTML = '';
     return;
   }
-  box.innerHTML = '<div class="card" style="margin-top:14px;">' +
-    weekPlan.map(d => {
-      const missingTxt = d.missing && d.missing.length ? '<p class="recipe-missing" style="margin:2px 0 0;">Falta: ' + d.missing.map(escapeHtml).join(', ') + '</p>' : '';
-      return '<div class="item-row" style="align-items:flex-start;">' +
-        '<div style="width:64px; flex-shrink:0;"><p class="item-name" style="font-weight:600;">' + escapeHtml(d.day || '') + '</p></div>' +
-        '<div style="flex:1;">' +
-          '<p class="item-name">' + escapeHtml(d.recipe || '') + '</p>' +
-          '<p class="item-meta">' + (d.time_minutes || '?') + ' min</p>' +
-          missingTxt +
+  box.innerHTML = '<div style="margin-top:14px;">' +
+    weekPlan.map((d, idx) => {
+      const missing = d.missing || [];
+      const complete = missing.length === 0;
+      const badge = complete ? '<span class="badge complete">já dá pra fazer</span>' : '<span class="badge missing">falta ' + missing.length + '</span>';
+      const missingLine = complete ? '' : '<p class="recipe-missing">Falta: ' + missing.map(escapeHtml).join(', ') + '</p>';
+      const ifoodUrl = 'https://www.ifood.com.br/busca?q=' + encodeURIComponent(d.recipe || '');
+      return '<div class="recipe-card">' +
+        '<p style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--teal-dark); font-weight:600; margin:0 0 4px;">' + escapeHtml(d.day || '') + '</p>' +
+        '<div class="recipe-top"><p class="recipe-name">' + escapeHtml(d.recipe || '') + '</p>' + badge + '</div>' +
+        '<p class="recipe-meta">' + (d.time_minutes || '?') + ' min</p>' +
+        missingLine +
+        '<div class="recipe-body" id="planbody-' + idx + '">' + escapeHtml(d.instructions || '') + '</div>' +
+        '<div class="video-slot" id="planvideo-' + idx + '"></div>' +
+        '<div style="display:flex; gap:14px; align-items:center; padding-top:6px; flex-wrap:wrap;">' +
+          '<button class="recipe-toggle" onclick="togglePlanRecipe(' + idx + ')" id="plantoggle-' + idx + '">Ver modo de preparo</button>' +
+          '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none;" href="' + ifoodUrl + '" target="_blank" rel="noopener">Pedir pronto no iFood</a>' +
         '</div>' +
       '</div>';
     }).join('') +
   '</div>';
+  loadPlanVideos(weekPlan);
+}
+
+function togglePlanRecipe(idx){
+  const body = document.getElementById('planbody-' + idx);
+  const btn = document.getElementById('plantoggle-' + idx);
+  const open = body.classList.toggle('open');
+  btn.textContent = open ? 'Esconder modo de preparo' : 'Ver modo de preparo';
+}
+
+async function loadPlanVideos(plan){
+  plan.forEach(async (d, idx) => {
+    const slot = document.getElementById('planvideo-' + idx);
+    if(!slot) return;
+    try{
+      const response = await fetch('/api/youtube-search', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ query: (d.recipe || '') + ' receita como fazer' })
+      });
+      const data = await response.json();
+      if(response.ok && data.videoId){
+        slot.innerHTML = '<iframe width="100%" height="180" style="border-radius:10px; border:none; margin-top:8px;" src="https://www.youtube.com/embed/' + data.videoId + '" title="Vídeo da receita" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>';
+      }else{
+        const ytUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((d.recipe || '') + ' receita como fazer');
+        slot.innerHTML = '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none; display:inline-block; padding-top:8px;" href="' + ytUrl + '" target="_blank" rel="noopener">Ver vídeo no YouTube</a>';
+      }
+    }catch(e){
+      const ytUrl = 'https://www.youtube.com/results?search_query=' + encodeURIComponent((d.recipe || '') + ' receita como fazer');
+      slot.innerHTML = '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none; display:inline-block; padding-top:8px;" href="' + ytUrl + '" target="_blank" rel="noopener">Ver vídeo no YouTube</a>';
+    }
+  });
 }
 
 async function generateRecipes(){
