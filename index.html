@@ -342,6 +342,7 @@
     margin-bottom:12px;
   }
   .search-input::placeholder{color:rgba(247,242,231,0.4);}
+  select.search-input option{background:var(--cream); color:var(--ink);}
   .section-label{
     font-size:11px;
     text-transform:uppercase;
@@ -454,7 +455,7 @@
 
     <div style="margin-bottom:12px;">
       <p class="section-label" style="margin-top:0;">Restrição alimentar</p>
-      <select id="dietSelect" class="search-input" style="margin-bottom:0;" onchange="saveDiet()">
+      <select id="dietSelect" class="search-input" style="margin-bottom:0; background:var(--cream); color:var(--ink);" onchange="saveDiet()">
         <option value="nenhuma">Nenhuma</option>
         <option value="vegetariano">Vegetariano</option>
         <option value="vegano">Vegano</option>
