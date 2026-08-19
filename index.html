@@ -435,7 +435,7 @@
 
   <section id="viewFridge">
     <div style="padding-top:16px;">
-      <input type="file" id="fileInput" accept="image/*" capture="environment" onchange="handlePhoto(event)">
+      <input type="file" id="fileInput" accept="image/*" capture="environment" multiple onchange="handlePhoto(event)">
       <button class="upload-btn" id="uploadBtn" onclick="document.getElementById('fileInput').click()">
         <i class="ti ti-camera"></i> Fotografar a geladeira
       </button>
@@ -451,6 +451,19 @@
     </button>
 
     <div id="householdArea" style="margin-bottom:12px;"></div>
+
+    <div style="margin-bottom:12px;">
+      <p class="section-label" style="margin-top:0;">Restrição alimentar</p>
+      <select id="dietSelect" class="search-input" style="margin-bottom:0;" onchange="saveDiet()">
+        <option value="nenhuma">Nenhuma</option>
+        <option value="vegetariano">Vegetariano</option>
+        <option value="vegano">Vegano</option>
+        <option value="sem lactose">Sem lactose</option>
+        <option value="sem glúten">Sem glúten</option>
+      </select>
+    </div>
+
+    <div id="replenishBanner"></div>
 
     <div id="errorBox"></div>
 
@@ -472,7 +485,11 @@
 
   <section id="viewRecipes" style="display:none;">
     <p id="savingsBanner" style="display:none; font-size:12px; background:rgba(227,167,43,0.15); color:var(--mustard); border-radius:10px; padding:10px 14px; margin:16px 0 0;"></p>
-    <div style="padding-top:16px; display:flex; gap:8px; flex-wrap:wrap;">
+    <div style="display:flex; gap:8px; align-items:center; padding-top:16px;">
+      <label style="font-size:12px; color:rgba(247,242,231,0.7); flex-shrink:0;">Pessoas hoje:</label>
+      <input type="number" id="peopleInput" min="1" max="20" value="2" class="search-input" style="margin-bottom:0; width:70px;">
+    </div>
+    <div style="padding-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
       <button class="gen-btn" id="genBtn" onclick="generateRecipes()" style="flex:1; min-width:180px;">
         <i class="ti ti-tools-kitchen-2"></i> <span id="genBtnLabel">O que eu cozinho com isso?</span>
       </button>
@@ -480,6 +497,9 @@
         <i class="ti ti-calendar"></i> <span id="planBtnLabel">Montar plano da semana</span>
       </button>
     </div>
+    <button type="button" class="add-manual" onclick="openLeftoverModal()" style="margin-top:8px;">
+      <i class="ti ti-recycle"></i> O que faço com essa sobra?
+    </button>
     <div id="planErrorBox"></div>
     <div id="weekPlanBox"></div>
     <div id="recipeErrorBox"></div>
@@ -570,6 +590,34 @@
       <div class="modal-actions">
         <button class="cancel" onclick="closeHouseholdModal()">Cancelar</button>
         <button class="confirm" id="householdSubmitBtn" onclick="submitHousehold()">Criar código</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="leftoverModalBg">
+    <div class="modal">
+      <h3>O que sobrou?</h3>
+      <input type="text" id="leftoverInput" placeholder="Ex: arroz e frango grelhado de ontem">
+      <div id="leftoverError" style="font-size:12px;color:var(--tomato);display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="cancel" onclick="closeLeftoverModal()">Cancelar</button>
+        <button class="confirm" id="leftoverSubmitBtn" onclick="submitLeftover()">Buscar ideias</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="expiryModalBg">
+    <div class="modal">
+      <h3>Ler validade da embalagem</h3>
+      <p style="font-size:13px; color:var(--ink-soft); margin:0 0 14px;">Fotografe a parte da embalagem com a data de validade impressa.</p>
+      <input type="file" id="expiryFileInput" accept="image/*" capture="environment" style="display:none;" onchange="handleExpiryPhoto(event)">
+      <button type="button" class="upload-btn" onclick="document.getElementById('expiryFileInput').click()">
+        <i class="ti ti-camera"></i> Fotografar validade
+      </button>
+      <div id="expiryError" style="font-size:12px;color:var(--tomato);display:none;margin-bottom:6px;"></div>
+      <div id="expiryResult" style="font-size:13px;color:var(--teal-dark);display:none;margin-bottom:10px;"></div>
+      <div class="modal-actions">
+        <button class="cancel" onclick="closeExpiryModal()">Fechar</button>
       </div>
     </div>
   </div>
@@ -905,6 +953,36 @@ function renderHouseholdArea(){
   }
 }
 
+const DIET_KEY = 'recheio_diet';
+
+function loadDiet(){
+  try{
+    const diet = localStorage.getItem(DIET_KEY) || 'nenhuma';
+    const select = document.getElementById('dietSelect');
+    if(select) select.value = diet;
+    return diet;
+  }catch(e){
+    return 'nenhuma';
+  }
+}
+
+function saveDiet(){
+  try{
+    const diet = document.getElementById('dietSelect').value;
+    localStorage.setItem(DIET_KEY, diet);
+  }catch(e){
+    // silencioso
+  }
+}
+
+function getDiet(){
+  try{
+    return localStorage.getItem(DIET_KEY) || 'nenhuma';
+  }catch(e){
+    return 'nenhuma';
+  }
+}
+
 async function loadInventory(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -947,6 +1025,8 @@ async function loadInventory(){
   renderQuickChips();
   renderSavingsBanner();
   checkExpiryNotifications();
+  renderReplenishBanner();
+  loadDiet();
 }
 
 function saveNotifiedIds(){
@@ -1053,6 +1133,34 @@ function iconFor(name){
   return 'ti-box';
 }
 
+function renderReplenishBanner(){
+  const box = document.getElementById('replenishBanner');
+  if(!box) return;
+  const freq = {};
+  consumedLog.forEach(c => {
+    const key = c.name.toLowerCase();
+    freq[key] = (freq[key] || 0) + 1;
+  });
+  const currentNames = inventory.map(i => i.name.toLowerCase());
+  const toReplenish = Object.keys(freq).filter(name => freq[name] >= 2 && !currentNames.includes(name));
+
+  if(toReplenish.length === 0){
+    box.innerHTML = '';
+    return;
+  }
+  box.innerHTML = '<div style="background:rgba(62,124,104,0.15); border-radius:10px; padding:10px 14px; margin-bottom:12px; font-size:12px; color:var(--teal);">' +
+    'Você sempre repõe: <strong>' + toReplenish.map(escapeHtml).join(', ') + '</strong> — já acabaram de novo?' +
+    '<br><button class="recipe-toggle" style="color:var(--mustard); padding-top:6px;" onclick="addReplenishToShopping()">+ Add à lista de compras</button>' +
+  '</div>';
+  window.__replenishItems = toReplenish;
+}
+
+function addReplenishToShopping(){
+  const items = window.__replenishItems || [];
+  addToShoppingList(items);
+  document.getElementById('replenishBanner').innerHTML = '<p style="font-size:12px; color:var(--teal);">Adicionado à lista de compras ✓</p>';
+}
+
 function renderInventory(){
   const list = document.getElementById('itemList');
   const empty = document.getElementById('emptyState');
@@ -1086,9 +1194,18 @@ function renderInventory(){
 
   const renderRow = ({item, idx}) => {
     const days = Math.floor((Date.now() - item.addedAt) / 86400000);
-    const stale = days >= STALE_DAYS;
-    const meta = days === 0 ? 'adicionado hoje' : (days === 1 ? 'adicionado há 1 dia' : 'adicionado há ' + days + ' dias');
-    const staleTag = stale ? ' · parado há um tempo, hora de usar' : '';
+    let stale = days >= STALE_DAYS;
+    let meta = days === 0 ? 'adicionado hoje' : (days === 1 ? 'adicionado há 1 dia' : 'adicionado há ' + days + ' dias');
+    let staleTag = stale ? ' · parado há um tempo, hora de usar' : '';
+    if(item.expiresAt){
+      const daysLeft = Math.ceil((item.expiresAt - Date.now()) / 86400000);
+      stale = daysLeft <= 1;
+      staleTag = '';
+      if(daysLeft < 0){ meta = 'validade vencida'; }
+      else if(daysLeft === 0){ meta = 'vence hoje'; }
+      else if(daysLeft === 1){ meta = 'vence amanhã'; }
+      else { meta = 'vence em ' + daysLeft + ' dias'; }
+    }
     return '<div class="item-row">' +
       '<div class="icon-chip' + (stale ? ' stale' : '') + '"><i class="ti ' + iconFor(item.name) + '"></i></div>' +
       '<div style="flex:1;">' +
@@ -1096,6 +1213,7 @@ function renderInventory(){
         '<p class="item-meta' + (stale ? ' stale' : '') + '">' + meta + staleTag + '</p>' +
       '</div>' +
       '<span class="item-qty">' + escapeHtml(item.qty || '') + '</span>' +
+      '<button class="edit-btn" aria-label="Ler validade" onclick="openExpiryModal(' + idx + ')" title="Ler validade da embalagem">📅</button>' +
       '<button class="edit-btn" aria-label="Editar" onclick="openEditModal(' + idx + ')">&#9998;</button>' +
       '<button class="remove-btn" aria-label="Remover" onclick="removeItem(' + idx + ')">&times;</button>' +
     '</div>';
@@ -1137,6 +1255,7 @@ async function removeItem(idx){
 
   consumedLog.push({ name: removed.name, removedAt: Date.now() });
   saveConsumedLog();
+  renderReplenishBanner();
 
   showUndoBar(removed);
 }
@@ -1274,42 +1393,63 @@ function stopVoiceInput(){
 }
 
 async function handlePhoto(event){
-  const file = event.target.files[0];
-  if(!file) return;
+  const files = Array.from(event.target.files || []);
+  if(files.length === 0) return;
   clearError('errorBox');
   const btn = document.getElementById('uploadBtn');
   btn.disabled = true;
-  btn.innerHTML = '<i class="ti ti-loader-2"></i> Identificando itens...';
 
-  try{
-    const base64 = await fileToBase64(file);
-    const response = await fetch("/api/identify", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ image: base64, mediaType: file.type || "image/jpeg" })
-    });
-    const data = await response.json();
-    if(!response.ok){
-      throw new Error(data.error || "Falha ao identificar itens");
+  let allItems = [];
+  let anyFailed = false;
+
+  for(let i = 0; i < files.length; i++){
+    btn.innerHTML = '<i class="ti ti-loader-2"></i> Identificando foto ' + (i + 1) + ' de ' + files.length + '...';
+    try{
+      const base64 = await fileToBase64(files[i]);
+      const response = await fetch("/api/identify", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ image: base64, mediaType: files[i].type || "image/jpeg" })
+      });
+      const data = await response.json();
+      if(!response.ok){
+        anyFailed = true;
+        continue;
+      }
+      const items = data.items || [];
+      if(Array.isArray(items)) allItems = allItems.concat(items);
+    }catch(e){
+      anyFailed = true;
     }
-    const items = data.items || [];
-    if(!Array.isArray(items) || items.length === 0){
-      showError('errorBox', 'Não consegui identificar itens nessa foto com segurança. Tente uma foto mais próxima e iluminada, ou adicione manualmente.');
+  }
+
+  if(allItems.length === 0){
+    showError('errorBox', 'Não consegui identificar itens nessas fotos com segurança. Tente fotos mais próximas e iluminadas, ou adicione manualmente.');
+  }else{
+    if(currentHouseholdId){
+      try{
+        const rows = allItems.filter(it => it.name).map(it => ({ household_id: currentHouseholdId, name: it.name, qty: it.qty || '', location: 'geladeira', added_by: currentUser.id }));
+        if(rows.length) await sbClient.from('fridge_items').insert(rows);
+        await loadHouseholdItems();
+      }catch(e){
+        showError('errorBox', 'Identifiquei os itens, mas não consegui salvar na geladeira da família.');
+      }
     }else{
       const now = Date.now();
-      items.forEach(it => {
+      allItems.forEach(it => {
         if(it.name) inventory.push({name: it.name, qty: it.qty || '', addedAt: now, location: 'geladeira'});
       });
       await saveInventory();
       renderInventory();
     }
-  }catch(e){
-    showError('errorBox', 'Algo deu errado ao analisar a foto. Tente novamente.');
-  }finally{
-    btn.disabled = false;
-    btn.innerHTML = '<i class="ti ti-camera"></i> Fotografar a geladeira';
-    event.target.value = '';
+    if(anyFailed){
+      showError('errorBox', 'Algumas fotos não puderam ser identificadas, mas o resto já foi adicionado.');
+    }
   }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="ti ti-camera"></i> Fotografar a geladeira';
+  event.target.value = '';
 }
 
 function fileToBase64(file){
@@ -1430,6 +1570,108 @@ function renderSavingsBanner(){
   box.textContent = '💰 Você economizou cerca de R$' + total + ' essa semana cozinhando em vez de pedir (' + count + (count === 1 ? ' receita feita' : ' receitas feitas') + ')';
 }
 
+function openLeftoverModal(){
+  document.getElementById('leftoverInput').value = '';
+  document.getElementById('leftoverError').style.display = 'none';
+  document.getElementById('leftoverModalBg').classList.add('open');
+}
+function closeLeftoverModal(){
+  document.getElementById('leftoverModalBg').classList.remove('open');
+}
+
+async function submitLeftover(){
+  const leftover = document.getElementById('leftoverInput').value.trim();
+  const errBox = document.getElementById('leftoverError');
+  if(!leftover){
+    errBox.textContent = 'Descreve rapidinho o que sobrou.';
+    errBox.style.display = 'block';
+    return;
+  }
+  errBox.style.display = 'none';
+  const btn = document.getElementById('leftoverSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Pensando...';
+  try{
+    const itemNames = inventory.map(i => i.name).join(', ');
+    const response = await fetch('/api/leftover', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ leftover, itemNames })
+    });
+    const data = await response.json();
+    if(!response.ok) throw new Error(data.error || 'Falha');
+    recipes = Array.isArray(data.recipes) ? data.recipes : [];
+    document.getElementById('filterRow').style.display = recipes.length ? 'flex' : 'none';
+    renderRecipes();
+    closeLeftoverModal();
+    switchTab('recipes');
+  }catch(e){
+    errBox.textContent = 'Não consegui pensar em nada agora. Tente de novo.';
+    errBox.style.display = 'block';
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Buscar ideias';
+  }
+}
+
+let expiryTargetIndex = null;
+
+function openExpiryModal(idx){
+  expiryTargetIndex = idx;
+  document.getElementById('expiryError').style.display = 'none';
+  document.getElementById('expiryResult').style.display = 'none';
+  document.getElementById('expiryModalBg').classList.add('open');
+}
+function closeExpiryModal(){
+  document.getElementById('expiryModalBg').classList.remove('open');
+  expiryTargetIndex = null;
+}
+
+async function handleExpiryPhoto(event){
+  const file = event.target.files[0];
+  if(!file || expiryTargetIndex === null) return;
+  const errBox = document.getElementById('expiryError');
+  const resultBox = document.getElementById('expiryResult');
+  errBox.style.display = 'none';
+  resultBox.style.display = 'none';
+  resultBox.textContent = 'Lendo a embalagem...';
+  resultBox.style.display = 'block';
+
+  try{
+    const base64 = await fileToBase64(file);
+    const response = await fetch('/api/read-expiry', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ image: base64, mediaType: file.type || 'image/jpeg' })
+    });
+    const data = await response.json();
+    if(!response.ok) throw new Error(data.error || 'Falha');
+    if(!data.found || !data.expiryDate){
+      resultBox.style.display = 'none';
+      errBox.textContent = 'Não consegui ler a validade nessa foto. Tente uma foto mais próxima e nítida da data.';
+      errBox.style.display = 'block';
+      return;
+    }
+    const expiresAt = new Date(data.expiryDate + 'T00:00:00').getTime();
+    if(currentHouseholdId && inventory[expiryTargetIndex].id){
+      inventory[expiryTargetIndex].expiresAt = expiresAt;
+      renderInventory();
+    }else{
+      inventory[expiryTargetIndex].expiresAt = expiresAt;
+      saveInventory();
+      renderInventory();
+    }
+    resultBox.textContent = 'Validade lida: ' + data.expiryDate;
+    resultBox.style.display = 'block';
+  }catch(e){
+    resultBox.style.display = 'none';
+    errBox.textContent = 'Algo deu errado ao ler a foto. Tente de novo.';
+    errBox.style.display = 'block';
+  }finally{
+    event.target.value = '';
+  }
+}
+
 async function generateWeekPlan(){
   if(inventory.length === 0){
     document.getElementById('planErrorBox').innerHTML = '<div class="error-line">Adicione itens na geladeira antes de montar o plano.</div>';
@@ -1446,7 +1688,7 @@ async function generateWeekPlan(){
     const response = await fetch('/api/mealplan', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ itemNames })
+      body: JSON.stringify({ itemNames, diet: getDiet() })
     });
     const data = await response.json();
     if(!response.ok){
@@ -1542,10 +1784,11 @@ async function generateRecipes(){
   try{
     const itemNames = inventory.map(i => i.name + (i.qty ? ' (' + i.qty + ')' : '')).join(', ');
     const excludeNames = recipes.map(r => r.name).filter(Boolean);
+    const peopleVal = document.getElementById('peopleInput') ? document.getElementById('peopleInput').value : '2';
     const response = await fetch("/api/recipes", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ itemNames, excludeNames })
+      body: JSON.stringify({ itemNames, excludeNames, diet: getDiet(), people: peopleVal })
     });
     const data = await response.json();
     if(!response.ok){
@@ -1613,6 +1856,7 @@ function renderRecipes(){
         '<button class="recipe-toggle" onclick="openCookMode(' + idx + ')">Modo mãos livres</button>' +
         '<a class="recipe-toggle" style="color:var(--teal-dark); text-decoration:none;" href="' + waUrl + '" target="_blank" rel="noopener">Chamar amigo</a>' +
         '<button class="recipe-toggle" onclick="markAsMade(\'' + escapeHtml(r.name || '').replace(/'/g, "\\'") + '\')">Eu fiz essa</button>' +
+        '<button class="recipe-toggle" onclick="shareToInstagram(' + idx + ')">Compartilhar no Insta</button>' +
       '</div>' +
       '<div style="display:flex; gap:14px; align-items:center; padding-top:6px; flex-wrap:wrap;">' +
         '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none;" href="' + ifoodUrl + '" target="_blank" rel="noopener">Pedir pronto no iFood</a>' +
@@ -1654,6 +1898,78 @@ function fallbackCopy(text, done){
   try{ document.execCommand('copy'); }catch(e){}
   document.body.removeChild(ta);
   done();
+}
+
+async function shareToInstagram(idx){
+  const r = (window.__shownRecipes || [])[idx];
+  if(!r) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 1080;
+  canvas.height = 1080;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#1F2E22';
+  ctx.fillRect(0, 0, 1080, 1080);
+
+  ctx.fillStyle = '#E3A72B';
+  ctx.beginPath();
+  ctx.arc(540, 380, 220, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#1F2E22';
+  ctx.font = '600 160px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('🍽️', 540, 390);
+
+  ctx.fillStyle = '#F7F2E7';
+  ctx.font = '600 64px Georgia, serif';
+  wrapText(ctx, r.name || 'Receita', 540, 680, 900, 74);
+
+  ctx.font = '400 32px sans-serif';
+  ctx.fillStyle = 'rgba(247,242,231,0.7)';
+  ctx.fillText((r.time_minutes || '?') + ' minutos de preparo', 540, 840);
+
+  ctx.font = '600 36px sans-serif';
+  ctx.fillStyle = '#E3A72B';
+  ctx.fillText('Feito com o Recheio 🧡', 540, 980);
+
+  canvas.toBlob(async (blob) => {
+    const file = new File([blob], 'receita.png', { type: 'image/png' });
+    if(navigator.share && navigator.canShare && navigator.canShare({ files: [file] })){
+      try{
+        await navigator.share({ files: [file], title: r.name || 'Receita' });
+        return;
+      }catch(e){
+        // se cancelar ou falhar, cai no download
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'recheio-' + (r.name || 'receita').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.png';
+    a.click();
+    URL.revokeObjectURL(url);
+  }, 'image/png');
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight){
+  const words = text.split(' ');
+  let line = '';
+  const lines = [];
+  words.forEach(word => {
+    const testLine = line + word + ' ';
+    if(ctx.measureText(testLine).width > maxWidth && line !== ''){
+      lines.push(line);
+      line = word + ' ';
+    }else{
+      line = testLine;
+    }
+  });
+  lines.push(line);
+  const startY = y - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((l, i) => ctx.fillText(l.trim(), x, startY + i * lineHeight));
 }
 
 function copyRecipeName(idx){
