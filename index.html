@@ -542,8 +542,11 @@
   </section>
 
   <section id="viewFridge" style="display:none;">
-    <div id="dailySummary" style="padding-top:16px;"></div>
-    <div style="padding-top:0;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding-top:16px;">
+      <p class="home-question" style="font-size:20px; margin:0;">Sua geladeira</p>
+      <button type="button" aria-label="Preferências" onclick="openPrefsModal()" style="background:none; border:none; color:rgba(247,242,231,0.6); font-size:20px; cursor:pointer; padding:4px;"><i class="ti ti-settings"></i></button>
+    </div>
+    <div style="padding-top:12px;">
       <input type="file" id="fileInput" accept="image/*" capture="environment" multiple onchange="handlePhoto(event)">
       <button class="upload-btn" id="uploadBtn" onclick="document.getElementById('fileInput').click()">
         <i class="ti ti-camera"></i> Fotografar a geladeira
@@ -555,24 +558,8 @@
 
     <div class="quick-chips" id="quickChips"></div>
 
-    <button type="button" class="add-manual" id="notifyBtn" onclick="enableExpiryNotifications()" style="margin-bottom:12px;">
-      <i class="ti ti-bell"></i> Ativar avisos antes de vencer
-    </button>
-
     <div id="householdArea" style="margin-bottom:12px;"></div>
     <div id="cookRanking"></div>
-
-    <div style="margin-bottom:12px;">
-      <p class="section-label" style="margin-top:0;">Restrição alimentar</p>
-      <select id="dietSelect" class="search-input" style="margin-bottom:0; background:var(--cream); color:var(--ink);" onchange="saveDiet()">
-        <option value="nenhuma">Nenhuma</option>
-        <option value="vegetariano">Vegetariano</option>
-        <option value="vegano">Vegano</option>
-        <option value="sem lactose">Sem lactose</option>
-        <option value="sem glúten">Sem glúten</option>
-      </select>
-    </div>
-
     <div id="replenishBanner"></div>
 
     <div id="errorBox"></div>
@@ -747,6 +734,26 @@
       <div id="onboardingDots" style="margin-bottom:16px;"></div>
       <div class="modal-actions">
         <button class="confirm" id="onboardingNextBtn" onclick="onboardingNext()" style="flex:1;">Próximo</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="prefsModalBg">
+    <div class="modal">
+      <h3>Preferências</h3>
+      <p class="section-label" style="margin-top:0;">Restrição alimentar</p>
+      <select id="dietSelect" class="search-input" style="background:var(--cream); color:var(--ink);" onchange="saveDiet()">
+        <option value="nenhuma">Nenhuma</option>
+        <option value="vegetariano">Vegetariano</option>
+        <option value="vegano">Vegano</option>
+        <option value="sem lactose">Sem lactose</option>
+        <option value="sem glúten">Sem glúten</option>
+      </select>
+      <button type="button" class="add-manual" id="notifyBtn" onclick="enableExpiryNotifications()" style="margin-bottom:6px;">
+        <i class="ti ti-bell"></i> Ativar avisos antes de vencer
+      </button>
+      <div class="modal-actions">
+        <button class="confirm" onclick="closePrefsModal()" style="flex:1;">Pronto</button>
       </div>
     </div>
   </div>
@@ -1188,6 +1195,13 @@ function onboardingNext(){
 function finishOnboarding(){
   try{ localStorage.setItem(ONBOARDED_KEY, '1'); }catch(e){}
   document.getElementById('onboardingModalBg').classList.remove('open');
+}
+
+function openPrefsModal(){
+  document.getElementById('prefsModalBg').classList.add('open');
+}
+function closePrefsModal(){
+  document.getElementById('prefsModalBg').classList.remove('open');
 }
 
 async function generateLazyRecipe(){
@@ -2361,22 +2375,35 @@ function renderRecipes(){
       '<div class="video-slot" id="video-' + idx + '"><button class="recipe-toggle" onclick="loadSingleVideo(' + idx + ')" id="videobtn-' + idx + '">▶ Carregar vídeo</button></div>' +
       '<div style="display:flex; gap:14px; align-items:center; padding-top:4px; flex-wrap:wrap;">' +
         '<button class="recipe-toggle" onclick="toggleRecipe(' + idx + ')" id="toggle-' + idx + '">Ver modo de preparo</button>' +
-        '<button class="recipe-toggle" onclick="openCookMode(' + idx + ')">Modo mãos livres</button>' +
-        '<a class="recipe-toggle" style="color:var(--teal-dark); text-decoration:none;" href="' + waUrl + '" target="_blank" rel="noopener">Chamar amigo</a>' +
-        '<button class="recipe-toggle" onclick="markAsMade(\'' + escapeHtml(r.name || '').replace(/'/g, "\\'") + '\')">Eu fiz essa</button>' +
-        '<button class="recipe-toggle" onclick="shareToInstagram(' + idx + ')">Compartilhar no Insta</button>' +
+        '<button class="recipe-toggle" onclick="toggleRecipeMore(' + idx + ')" id="moretoggle-' + idx + '">⋯ Mais opções</button>' +
       '</div>' +
-      '<div style="display:flex; gap:14px; align-items:center; padding-top:6px; flex-wrap:wrap;">' +
-        '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none;" href="' + ifoodUrl + '" target="_blank" rel="noopener">Pedir pronto no iFood</a>' +
-        '<button class="recipe-toggle" onclick="copyRecipeName(' + idx + ')" id="copyname-' + idx + '">Copiar nome do prato</button>' +
-        copyMissingBtn +
-        subBtn +
+      '<div id="more-' + idx + '" style="display:none; padding-top:8px;">' +
+        '<div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:6px;">' +
+          '<button class="recipe-toggle" onclick="openCookMode(' + idx + ')">Modo mãos livres</button>' +
+          '<a class="recipe-toggle" style="color:var(--teal-dark); text-decoration:none;" href="' + waUrl + '" target="_blank" rel="noopener">Chamar amigo</a>' +
+          '<button class="recipe-toggle" onclick="markAsMade(\'' + escapeHtml(r.name || '').replace(/'/g, "\\'") + '\')">Eu fiz essa</button>' +
+          '<button class="recipe-toggle" onclick="shareToInstagram(' + idx + ')">Compartilhar no Insta</button>' +
+        '</div>' +
+        '<div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap;">' +
+          '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none;" href="' + ifoodUrl + '" target="_blank" rel="noopener">Pedir pronto no iFood</a>' +
+          '<button class="recipe-toggle" onclick="copyRecipeName(' + idx + ')" id="copyname-' + idx + '">Copiar nome do prato</button>' +
+          copyMissingBtn +
+          subBtn +
+        '</div>' +
       '</div>' +
       '<div id="subs-' + idx + '"></div>' +
       missingBtn +
     '</div>';
   }).join('');
   window.__shownRecipes = shown;
+}
+
+function toggleRecipeMore(idx){
+  const box = document.getElementById('more-' + idx);
+  const btn = document.getElementById('moretoggle-' + idx);
+  const open = box.style.display === 'none';
+  box.style.display = open ? 'block' : 'none';
+  btn.textContent = open ? '⋯ Menos opções' : '⋯ Mais opções';
 }
 
 function copyToClipboard(text, btnId, successLabel){
