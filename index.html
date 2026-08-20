@@ -505,6 +505,51 @@
     max-width:90vw;
   }
   .undo-bar.show{display:flex;}
+  .toast{
+    position:fixed;
+    bottom:18px;
+    left:50%;
+    transform:translateX(-50%) translateY(20px);
+    background:var(--teal);
+    color:#EAF3EE;
+    padding:12px 20px;
+    border-radius:12px;
+    font-size:13px;
+    font-weight:500;
+    z-index:30;
+    box-shadow:0 6px 20px rgba(0,0,0,0.3);
+    opacity:0;
+    transition:opacity 0.25s ease, transform 0.25s ease;
+    pointer-events:none;
+    max-width:90vw;
+    text-align:center;
+  }
+  .toast.show{
+    opacity:1;
+    transform:translateX(-50%) translateY(0);
+  }
+  @keyframes skeletonPulse{
+    0%{opacity:0.5;}
+    50%{opacity:0.9;}
+    100%{opacity:0.5;}
+  }
+  .skeleton-card{
+    background:var(--cream);
+    border-radius:16px;
+    padding:16px;
+    margin-bottom:12px;
+  }
+  .skeleton-line{
+    height:12px;
+    border-radius:6px;
+    background:rgba(36,38,31,0.12);
+    animation:skeletonPulse 1.3s ease-in-out infinite;
+    margin-bottom:8px;
+  }
+  .skeleton-line.w60{width:60%;}
+  .skeleton-line.w40{width:40%; height:9px;}
+  .skeleton-line.w90{width:90%; height:9px;}
+  .skeleton-line.w30{width:30%; height:9px; margin-bottom:0;}
   .undo-bar button{
     background:none;
     border:none;
@@ -734,6 +779,19 @@
       <div id="onboardingDots" style="margin-bottom:16px;"></div>
       <div class="modal-actions">
         <button class="confirm" id="onboardingNextBtn" onclick="onboardingNext()" style="flex:1;">Próximo</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="cravingModalBg">
+    <div class="modal">
+      <h3>Com vontade de comer o quê?</h3>
+      <input type="text" id="cravingInput" placeholder="Ex: chocolate, massa, algo picante...">
+      <p style="font-size:12px; color:var(--ink-soft); margin:0 0 10px;">Tem restrição alimentar? <button type="button" onclick="closeCravingModal(); openPrefsModal();" style="background:none; border:none; color:var(--teal-dark); text-decoration:underline; cursor:pointer; font-size:12px; padding:0;">Ajustar em Preferências</button></p>
+      <div id="cravingError" style="font-size:12px;color:var(--tomato);display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="cancel" onclick="closeCravingModal()">Cancelar</button>
+        <button class="confirm" id="cravingSubmitBtn" onclick="submitCraving()">Buscar receitas</button>
       </div>
     </div>
   </div>
@@ -1298,7 +1356,57 @@ function homeGoFridge(){
   document.getElementById('fileInput').click();
 }
 function homeGoCraving(){
-  switchTab('recipes');
+  openCravingModal();
+}
+
+function openCravingModal(){
+  document.getElementById('cravingInput').value = '';
+  document.getElementById('cravingError').style.display = 'none';
+  document.getElementById('cravingModalBg').classList.add('open');
+}
+function closeCravingModal(){
+  document.getElementById('cravingModalBg').classList.remove('open');
+}
+
+async function submitCraving(){
+  const craving = document.getElementById('cravingInput').value.trim();
+  const errBox = document.getElementById('cravingError');
+  if(!craving){
+    errBox.textContent = 'Digita rapidinho o que você tá com vontade de comer.';
+    errBox.style.display = 'block';
+    return;
+  }
+  if(inventory.length === 0){
+    errBox.textContent = 'Adicione itens na geladeira primeiro, mesmo que poucos.';
+    errBox.style.display = 'block';
+    return;
+  }
+  errBox.style.display = 'none';
+  const btn = document.getElementById('cravingSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Buscando...';
+  try{
+    const itemNames = inventory.map(i => i.name + (i.qty ? ' (' + i.qty + ')' : '')).join(', ');
+    const peopleVal = document.getElementById('peopleInput') ? document.getElementById('peopleInput').value : '2';
+    const response = await fetch('/api/recipes', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ itemNames, excludeNames: [], diet: getDiet(), people: peopleVal, craving })
+    });
+    const data = await response.json();
+    if(!response.ok) throw new Error(data.error || 'Falha');
+    recipes = Array.isArray(data.recipes) ? data.recipes : [];
+    document.getElementById('filterRow').style.display = recipes.length ? 'flex' : 'none';
+    renderRecipes();
+    closeCravingModal();
+    switchTab('recipes');
+  }catch(e){
+    errBox.textContent = 'Não consegui buscar agora. Tenta de novo.';
+    errBox.style.display = 'block';
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Buscar receitas';
+  }
 }
 function homeGoQuick(){
   switchTab('recipes');
@@ -1476,6 +1584,7 @@ async function quickAddItem(name){
     try{
       await sbClient.from('fridge_items').insert({ household_id: currentHouseholdId, name, qty: '', location: 'geladeira', added_by: currentUser.id });
       await loadHouseholdItems();
+      showToast(name + ' adicionado ✓');
     }catch(e){
       showError('errorBox', 'Não consegui adicionar na geladeira da família agora.');
     }
@@ -1484,6 +1593,7 @@ async function quickAddItem(name){
   inventory.push({name, qty: '', addedAt: Date.now(), location: 'geladeira'});
   saveInventory();
   renderInventory();
+  showToast(name + ' adicionado ✓');
 }
 
 function saveConsumedLog(){
@@ -1632,6 +1742,36 @@ function renderInventory(){
   list.innerHTML = html;
 }
 
+let toastTimer = null;
+function showToast(message){
+  let el = document.getElementById('toastEl');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'toastEl';
+    el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = message;
+  requestAnimationFrame(() => el.classList.add('show'));
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.classList.remove('show');
+  }, 2500);
+}
+
+function skeletonCards(count){
+  let html = '';
+  for(let i = 0; i < count; i++){
+    html += '<div class="skeleton-card">' +
+      '<div class="skeleton-line w60"></div>' +
+      '<div class="skeleton-line w40"></div>' +
+      '<div class="skeleton-line w90"></div>' +
+      '<div class="skeleton-line w30"></div>' +
+    '</div>';
+  }
+  return html;
+}
+
 function escapeHtml(s){
   const d = document.createElement('div');
   d.textContent = s;
@@ -1723,6 +1863,8 @@ async function confirmAddItem(){
     return;
   }
 
+  const wasEditing = editingIndex !== null;
+
   if(currentHouseholdId){
     try{
       if(editingIndex !== null && inventory[editingIndex] && inventory[editingIndex].id){
@@ -1732,6 +1874,7 @@ async function confirmAddItem(){
       }
       await loadHouseholdItems();
       closeAddModal();
+      showToast(wasEditing ? 'Item atualizado ✓' : name + ' adicionado ✓');
     }catch(e){
       const err = document.getElementById('modalError');
       err.textContent = 'Não consegui salvar na geladeira da família agora.';
@@ -1750,6 +1893,7 @@ async function confirmAddItem(){
   saveInventory();
   renderInventory();
   closeAddModal();
+  showToast(wasEditing ? 'Item atualizado ✓' : name + ' adicionado ✓');
 }
 
 function toggleVoiceInput(){
@@ -1903,6 +2047,7 @@ function addToShoppingList(names){
   });
   saveShoppingList();
   renderShoppingList();
+  if(added > 0) showToast(added === 1 ? '1 item adicionado à lista ✓' : added + ' itens adicionados à lista ✓');
   return added;
 }
 
@@ -2277,6 +2422,10 @@ async function generateRecipes(){
   const btn = document.getElementById('genBtn');
   const label = document.getElementById('genBtnLabel');
   btn.disabled = true;
+
+  if(isFirstBatch){
+    document.getElementById('recipeList').innerHTML = skeletonCards(4);
+  }
 
   const itemNames = inventory.map(i => i.name + (i.qty ? ' (' + i.qty + ')' : '')).join(', ');
   const peopleVal = document.getElementById('peopleInput') ? document.getElementById('peopleInput').value : '2';
