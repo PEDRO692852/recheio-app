@@ -300,6 +300,107 @@
     margin:6px 0 0;
     font-weight:500;
   }
+  .home-greeting{
+    font-size:15px;
+    color:rgba(247,242,231,0.6);
+    margin:20px 0 4px;
+  }
+  .home-question{
+    font-family:'Fraunces',serif;
+    font-size:26px;
+    font-weight:500;
+    color:var(--cream);
+    margin:0 0 20px;
+    line-height:1.25;
+  }
+  .expiry-hero{
+    background:linear-gradient(135deg, var(--tomato) 0%, var(--tomato-dark) 100%);
+    border-radius:18px;
+    padding:18px 20px;
+    margin-bottom:22px;
+    cursor:pointer;
+    border:none;
+    text-align:left;
+    width:100%;
+    font-family:inherit;
+  }
+  .expiry-hero-label{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+    color:rgba(255,255,255,0.75);
+    font-weight:600;
+    margin:0 0 6px;
+  }
+  .expiry-hero-title{
+    font-family:'Fraunces',serif;
+    font-size:19px;
+    color:#fff;
+    margin:0 0 4px;
+    font-weight:500;
+  }
+  .expiry-hero-sub{
+    font-size:12px;
+    color:rgba(255,255,255,0.8);
+    margin:0;
+  }
+  .expiry-hero.calm{
+    background:var(--surface-calm, rgba(62,124,104,0.16));
+    background:rgba(62,124,104,0.16);
+  }
+  .expiry-hero.calm .expiry-hero-label{color:var(--teal);}
+  .expiry-hero.calm .expiry-hero-title{color:var(--cream);}
+  .expiry-hero.calm .expiry-hero-sub{color:rgba(247,242,231,0.65);}
+  .primary-cta{
+    width:100%;
+    padding:16px;
+    border-radius:14px;
+    border:none;
+    background:var(--mustard);
+    color:var(--mustard-dark);
+    font-family:'Fraunces',serif;
+    font-size:16px;
+    font-weight:600;
+    cursor:pointer;
+    margin-bottom:22px;
+  }
+  .intent-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-bottom:10px;
+  }
+  .intent-card{
+    background:var(--cream);
+    border-radius:14px;
+    padding:16px 14px;
+    text-align:left;
+    border:none;
+    cursor:pointer;
+    font-family:inherit;
+  }
+  .intent-icon{font-size:22px; display:block; margin-bottom:8px;}
+  .intent-label{
+    font-size:13px;
+    font-weight:500;
+    color:var(--ink);
+    margin:0;
+    line-height:1.3;
+  }
+  .surprise-btn{
+    width:100%;
+    padding:14px;
+    border-radius:14px;
+    border:1px dashed rgba(247,242,231,0.3);
+    background:transparent;
+    color:rgba(247,242,231,0.8);
+    font-family:inherit;
+    font-size:14px;
+    font-weight:500;
+    cursor:pointer;
+    margin-top:12px;
+    margin-bottom:24px;
+  }
   .modal .tab{
     color:var(--ink-soft);
     border-color:rgba(36,38,31,0.15);
@@ -430,12 +531,17 @@
   </header>
 
   <div class="tabs">
-    <button class="tab active" id="tabFridge" onclick="switchTab('fridge')">Geladeira</button>
+    <button class="tab active" id="tabHome" onclick="switchTab('home')">Início</button>
+    <button class="tab" id="tabFridge" onclick="switchTab('fridge')">Geladeira</button>
     <button class="tab" id="tabRecipes" onclick="switchTab('recipes')">Receitas</button>
     <button class="tab" id="tabShopping" onclick="switchTab('shopping')">Compras</button>
   </div>
 
-  <section id="viewFridge">
+  <section id="viewHome">
+    <div id="homeContent"></div>
+  </section>
+
+  <section id="viewFridge" style="display:none;">
     <div id="dailySummary" style="padding-top:16px;"></div>
     <div style="padding-top:0;">
       <input type="file" id="fileInput" accept="image/*" capture="environment" multiple onchange="handlePhoto(event)">
@@ -1117,6 +1223,95 @@ async function generateLazyRecipe(){
   }
 }
 
+function getExpiringItems(){
+  return inventory.filter(i => {
+    if(i.expiresAt){
+      const daysLeft = Math.ceil((i.expiresAt - Date.now()) / 86400000);
+      return daysLeft <= 1;
+    }
+    const days = Math.floor((Date.now() - i.addedAt) / 86400000);
+    return days >= STALE_DAYS;
+  });
+}
+
+function renderHome(){
+  const box = document.getElementById('homeContent');
+  if(!box) return;
+
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Bom dia' : (hour < 18 ? 'Boa tarde' : 'Boa noite');
+  const expiring = getExpiringItems();
+
+  let heroHtml = '';
+  if(inventory.length === 0){
+    heroHtml = '';
+  }else if(expiring.length > 0){
+    const names = expiring.slice(0, 3).map(i => i.name).join(', ');
+    heroHtml = '<button class="expiry-hero" onclick="switchTab(\'fridge\')">' +
+      '<p class="expiry-hero-label">Precisa de atenção</p>' +
+      '<p class="expiry-hero-title">' + expiring.length + (expiring.length === 1 ? ' item pedindo' : ' itens pedindo') + ' pra sair da geladeira</p>' +
+      '<p class="expiry-hero-sub">' + escapeHtml(names) + '</p>' +
+    '</button>';
+  }else{
+    heroHtml = '<button class="expiry-hero calm" onclick="switchTab(\'fridge\')">' +
+      '<p class="expiry-hero-label">Tudo em dia</p>' +
+      '<p class="expiry-hero-title">Nada vencendo por enquanto</p>' +
+      '<p class="expiry-hero-sub">' + inventory.length + ' ' + (inventory.length === 1 ? 'item na geladeira' : 'itens na geladeira') + '</p>' +
+    '</button>';
+  }
+
+  box.innerHTML =
+    '<p class="home-greeting">' + greeting + '</p>' +
+    '<p class="home-question">O que vamos<br>cozinhar hoje?</p>' +
+    heroHtml +
+    '<button class="primary-cta" onclick="homeGoCook()">🍳 O que vamos cozinhar hoje?</button>' +
+    '<div class="intent-grid">' +
+      '<button class="intent-card" onclick="homeGoFridge()"><span class="intent-icon">📸</span><p class="intent-label">Tenho comida na geladeira</p></button>' +
+      '<button class="intent-card" onclick="homeGoCraving()"><span class="intent-icon">😋</span><p class="intent-label">Estou com vontade de comer...</p></button>' +
+      '<button class="intent-card" onclick="homeGoQuick()"><span class="intent-icon">⏱️</span><p class="intent-label">Tenho 15 minutos</p></button>' +
+      '<button class="intent-card" onclick="homeGoCheap()"><span class="intent-icon">💰</span><p class="intent-label">Quero gastar pouco</p></button>' +
+      '<button class="intent-card" onclick="homeGoWaste()"><span class="intent-icon">♻️</span><p class="intent-label">Quero evitar desperdício</p></button>' +
+      '<button class="intent-card" onclick="homeGoSurprise()"><span class="intent-icon">🎲</span><p class="intent-label">Me surpreenda</p></button>' +
+    '</div>';
+}
+
+function homeGoCook(){
+  switchTab('recipes');
+  if(inventory.length > 0 && recipes.length === 0) generateRecipes();
+}
+function homeGoFridge(){
+  switchTab('fridge');
+  document.getElementById('fileInput').click();
+}
+function homeGoCraving(){
+  switchTab('recipes');
+}
+function homeGoQuick(){
+  switchTab('recipes');
+  const go = () => { setFilter('rapida'); };
+  if(recipes.length === 0 && inventory.length > 0){
+    generateRecipes().then(go);
+  }else{
+    go();
+  }
+}
+function homeGoCheap(){
+  switchTab('recipes');
+  const go = () => { setFilter('completa'); };
+  if(recipes.length === 0 && inventory.length > 0){
+    generateRecipes().then(go);
+  }else{
+    go();
+  }
+}
+function homeGoWaste(){
+  switchTab('fridge');
+}
+function homeGoSurprise(){
+  switchTab('recipes');
+  generateLazyRecipe();
+}
+
 function renderDailySummary(){
   const box = document.getElementById('dailySummary');
   if(!box) return;
@@ -1302,12 +1497,15 @@ function clearError(boxId){
 }
 
 function switchTab(tab){
+  document.getElementById('viewHome').style.display = tab === 'home' ? 'block' : 'none';
   document.getElementById('viewFridge').style.display = tab === 'fridge' ? 'block' : 'none';
   document.getElementById('viewRecipes').style.display = tab === 'recipes' ? 'block' : 'none';
   document.getElementById('viewShopping').style.display = tab === 'shopping' ? 'block' : 'none';
+  document.getElementById('tabHome').classList.toggle('active', tab === 'home');
   document.getElementById('tabFridge').classList.toggle('active', tab === 'fridge');
   document.getElementById('tabRecipes').classList.toggle('active', tab === 'recipes');
   document.getElementById('tabShopping').classList.toggle('active', tab === 'shopping');
+  if(tab === 'home') renderHome();
 }
 
 function iconFor(name){
@@ -2420,6 +2618,7 @@ loadPrefs();
 updateStreak();
 initAuth();
 checkOnboarding();
+renderHome();
 </script>
 </body>
 </html>
