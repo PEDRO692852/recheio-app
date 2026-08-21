@@ -2514,7 +2514,14 @@ function renderWeekPlan(){
     byDay[m.day].push(m);
   });
 
-  box.innerHTML = '<div style="margin-top:14px;">' +
+  const totalMissing = new Set();
+  weekPlan.forEach(m => (m.missing || []).forEach(i => totalMissing.add(i.toLowerCase())));
+
+  const consolidateBtn = totalMissing.size > 0
+    ? '<button type="button" class="primary-cta" style="margin-top:14px; padding:12px; font-size:14px;" onclick="consolidateWeekShopping()">🛒 Gerar lista de compras da semana toda (' + totalMissing.size + ' itens)</button>'
+    : '<p style="font-size:12px; color:var(--teal); margin-top:14px;">✓ Sua semana inteira já dá pra fazer com o que você tem!</p>';
+
+  box.innerHTML = consolidateBtn + '<div style="margin-top:14px;">' +
     Object.keys(byDay).map(day => {
       const mealsHtml = byDay[day].map(m => {
         const idx = m.__idx;
@@ -2539,6 +2546,16 @@ function renderWeekPlan(){
       return '<p class="section-label" style="color:var(--mustard);">' + escapeHtml(day) + '</p>' + mealsHtml;
     }).join('') +
   '</div>';
+}
+
+function consolidateWeekShopping(){
+  const allMissing = [];
+  weekPlan.forEach(m => (m.missing || []).forEach(i => allMissing.push(i)));
+  const added = addToShoppingList(allMissing);
+  switchTab('shopping');
+  if(added === 0){
+    showToast('Todos esses itens já estavam na sua lista ✓');
+  }
 }
 
 function togglePlanRecipe(idx){
