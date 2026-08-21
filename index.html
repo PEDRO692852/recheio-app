@@ -1220,7 +1220,25 @@ function renderHouseholdArea(){
 
 const DIET_KEY = 'recheio_diet';
 
-function updateStreak(){
+function loadAndCheckStreak(){
+  try{
+    const raw = localStorage.getItem(STREAK_KEY);
+    let data = raw ? JSON.parse(raw) : { count: 0, lastDate: null };
+    if(data.lastDate){
+      const today = new Date().toDateString();
+      const yesterday = new Date(Date.now() - 86400000).toDateString();
+      if(data.lastDate !== today && data.lastDate !== yesterday){
+        data.count = 0;
+        localStorage.setItem(STREAK_KEY, JSON.stringify(data));
+      }
+    }
+    renderStreakBadge(data.count);
+  }catch(e){
+    // silencioso
+  }
+}
+
+function registerRescueStreak(){
   try{
     const raw = localStorage.getItem(STREAK_KEY);
     const data = raw ? JSON.parse(raw) : { count: 0, lastDate: null };
@@ -1238,6 +1256,7 @@ function updateStreak(){
     data.lastDate = today;
     localStorage.setItem(STREAK_KEY, JSON.stringify(data));
     renderStreakBadge(data.count);
+    if(data.count >= 2) showToast('🔥 ' + data.count + ' dias seguidos resgatando comida da geladeira!');
   }catch(e){
     // silencioso
   }
@@ -1248,7 +1267,7 @@ function renderStreakBadge(count){
   if(!el) return;
   if(count >= 2){
     el.style.display = 'inline-block';
-    el.textContent = '🔥 ' + count + ' dias seguidos';
+    el.textContent = '🔥 ' + count + ' dias resgatando comida';
   }else{
     el.style.display = 'none';
   }
@@ -2040,6 +2059,8 @@ async function removeItem(idx){
   consumedLog.push({ name: removed.name, removedAt: Date.now(), wasStale });
   saveConsumedLog();
   renderReplenishBanner();
+
+  if(wasStale) registerRescueStreak();
 
   showUndoBar(removed);
 }
@@ -3083,7 +3104,7 @@ loadInventory();
 renderAuthArea();
 renderHouseholdArea();
 loadPrefs();
-updateStreak();
+loadAndCheckStreak();
 initAuth();
 checkOnboarding();
 renderHome();
