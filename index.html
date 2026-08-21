@@ -857,6 +857,7 @@ const CONSUMED_KEY = 'recheio_consumed';
 const STALE_DAYS = 4;
 const QUICK_ITEMS = ['ovo','leite','arroz','feijão','tomate','cebola','alho','queijo','manteiga','café'];
 const STREAK_KEY = 'recheio_streak';
+const PLAN_LOG_KEY = 'recheio_planlog';
 const PREFS_KEY = 'recheio_prefs';
 const ONBOARDED_KEY = 'recheio_onboarded';
 let recipePrefs = {};
@@ -1309,6 +1310,92 @@ async function generateLazyRecipe(){
   }
 }
 
+function computeRecheioScore(){
+  // Aproveitamento: quanto da geladeira atual NÃO está vencendo
+  let aproveitamento = 100;
+  if(inventory.length > 0){
+    const staleCount = inventory.filter(isItemStale).length;
+    aproveitamento = Math.round(100 - (staleCount / inventory.length) * 100);
+  }
+
+  // Consistência: quantas semanas distintas você gerou plano semanal (últimas 8 semanas)
+  let consistencia = 0;
+  try{
+    const raw = localStorage.getItem(PLAN_LOG_KEY);
+    const log = raw ? JSON.parse(raw) : [];
+    const eightWeeksAgo = Date.now() - (8 * 7 * 86400000);
+    const weeks = new Set(log.filter(t => t >= eightWeeksAgo).map(t => Math.floor(t / (7 * 86400000))));
+    consistencia = Math.min(100, weeks.size * 25);
+  }catch(e){
+    consistencia = 0;
+  }
+
+  // Variedade: quantas receitas diferentes você fez nos últimos 30 dias
+  const monthAgo = Date.now() - (30 * 86400000);
+  const distinctMade = new Set(madeLog.filter(m => m.madeAt >= monthAgo).map(m => m.name.toLowerCase()));
+  const variedade = Math.min(100, distinctMade.size * 10);
+
+  // Resgate: quantas vezes você usou algo que já estava vencendo, nos últimos 30 dias
+  const resgateCount = consumedLog.filter(c => c.removedAt >= monthAgo && c.wasStale).length;
+  const resgate = Math.min(100, resgateCount * 20);
+
+  const total = Math.round(
+    aproveitamento * 0.4 +
+    consistencia * 0.25 +
+    variedade * 0.2 +
+    resgate * 0.15
+  );
+
+  return { total, aproveitamento, consistencia, variedade, resgate };
+}
+
+function renderScoreRing(){
+  const box = document.getElementById('scoreRing');
+  if(!box) return;
+  if(inventory.length === 0 && madeLog.length === 0){
+    box.innerHTML = '';
+    return;
+  }
+  const score = computeRecheioScore();
+  const deg = Math.round((score.total / 100) * 360);
+  const ringColor = score.total >= 70 ? '#3E7C68' : (score.total >= 40 ? '#E3A72B' : '#C1432B');
+  box.innerHTML =
+    '<div style="display:flex; align-items:center; gap:14px; background:var(--cream); border-radius:16px; padding:14px 16px; margin-bottom:18px; cursor:pointer;" onclick="toggleScoreDetail()">' +
+      '<div style="width:56px; height:56px; border-radius:50%; flex-shrink:0; background:conic-gradient(' + ringColor + ' ' + deg + 'deg, rgba(36,38,31,0.1) ' + deg + 'deg); display:flex; align-items:center; justify-content:center;">' +
+        '<div style="width:44px; height:44px; border-radius:50%; background:var(--cream); display:flex; align-items:center; justify-content:center; font-family:Fraunces,serif; font-weight:600; font-size:16px; color:var(--ink);">' + score.total + '</div>' +
+      '</div>' +
+      '<div style="flex:1;">' +
+        '<p style="font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); font-weight:600; margin:0 0 2px;">Recheio Score</p>' +
+        '<p style="font-size:13px; color:var(--ink); margin:0;">' + scoreMessage(score.total) + '</p>' +
+      '</div>' +
+    '</div>' +
+    '<div id="scoreDetail" style="display:none; margin:-10px 0 18px; padding:12px 16px; background:rgba(247,242,231,0.06); border-radius:12px;">' +
+      scoreDetailRow('Aproveitamento', score.aproveitamento) +
+      scoreDetailRow('Consistência', score.consistencia) +
+      scoreDetailRow('Variedade', score.variedade) +
+      scoreDetailRow('Resgate', score.resgate) +
+    '</div>';
+}
+
+function scoreDetailRow(label, value){
+  return '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">' +
+    '<span style="font-size:12px; color:rgba(247,242,231,0.7);">' + label + '</span>' +
+    '<span style="font-size:12px; color:var(--cream); font-weight:600;">' + value + '</span>' +
+  '</div>';
+}
+
+function scoreMessage(total){
+  if(total >= 80) return 'Está indo muito bem — pouquíssimo desperdício.';
+  if(total >= 60) return 'No caminho certo, ainda dá pra melhorar.';
+  if(total >= 35) return 'Alguns itens estão vencendo sem uso.';
+  return 'Vale dar mais atenção à geladeira essa semana.';
+}
+
+function toggleScoreDetail(){
+  const el = document.getElementById('scoreDetail');
+  if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
 function getExpiringItems(){
   return inventory.filter(i => {
     if(i.expiresAt){
@@ -1348,6 +1435,7 @@ function renderHome(){
 
   box.innerHTML =
     '<p class="home-greeting">' + greeting + '</p>' +
+    '<div id="scoreRing"></div>' +
     '<p class="home-question">O que vamos<br>cozinhar hoje?</p>' +
     heroHtml +
     '<button class="primary-cta" onclick="homeGoCook()">🍳 O que vamos cozinhar hoje?</button>' +
@@ -1359,6 +1447,7 @@ function renderHome(){
       '<button class="intent-card" onclick="homeGoWaste()"><span class="intent-icon">♻️</span><p class="intent-label">Quero evitar desperdício</p></button>' +
       '<button class="intent-card" onclick="homeGoSurprise()"><span class="intent-icon">🎲</span><p class="intent-label">Me surpreenda</p></button>' +
     '</div>';
+  renderScoreRing();
 }
 
 function homeGoCook(){
@@ -1546,6 +1635,7 @@ async function loadInventory(){
   renderReplenishBanner();
   renderDailySummary();
   loadDiet();
+  renderHome();
 }
 
 function saveNotifiedIds(){
@@ -1807,11 +1897,21 @@ async function removeItem(idx){
   saveInventory();
   renderInventory();
 
-  consumedLog.push({ name: removed.name, removedAt: Date.now() });
+  const wasStale = isItemStale(removed);
+  consumedLog.push({ name: removed.name, removedAt: Date.now(), wasStale });
   saveConsumedLog();
   renderReplenishBanner();
 
   showUndoBar(removed);
+}
+
+function isItemStale(item){
+  if(item.expiresAt){
+    const daysLeft = Math.ceil((item.expiresAt - Date.now()) / 86400000);
+    return daysLeft <= 1;
+  }
+  const days = Math.floor((Date.now() - item.addedAt) / 86400000);
+  return days >= STALE_DAYS;
 }
 
 function showUndoBar(removedItem){
@@ -2341,6 +2441,17 @@ async function generateWeekPlan(){
       renderWeekPlan();
     }catch(e){
       document.getElementById('planErrorBox').innerHTML = '<div class="error-line">Deu erro montando ' + day + '. Detalhe: ' + (e && e.message ? e.message : '') + ' — o resto dos dias já buscados continua aí.</div>';
+    }
+  }
+
+  if(weekPlan.length > 0){
+    try{
+      const raw = localStorage.getItem(PLAN_LOG_KEY);
+      const log = raw ? JSON.parse(raw) : [];
+      log.push(Date.now());
+      localStorage.setItem(PLAN_LOG_KEY, JSON.stringify(log));
+    }catch(e){
+      // silencioso
     }
   }
 
