@@ -810,6 +810,19 @@
     </div>
   </div>
 
+  <div class="modal-bg" id="budgetModalBg">
+    <div class="modal">
+      <h3>Quanto você tem pra gastar?</h3>
+      <p style="font-size:13px; color:var(--ink-soft); margin:0 0 14px;">Pra repor só o que falta essa semana. Os valores são estimativas de preço médio de mercado, não exatos.</p>
+      <input type="number" id="budgetInput" placeholder="Ex: 50" min="0" step="5">
+      <div id="budgetError" style="font-size:12px;color:var(--tomato);display:none;margin-bottom:6px;"></div>
+      <div class="modal-actions">
+        <button class="cancel" onclick="closeBudgetModal()">Cancelar</button>
+        <button class="confirm" id="budgetSubmitBtn" onclick="submitBudget()">Buscar receitas baratas</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-bg" id="prefsModalBg">
     <div class="modal">
       <h3>Preferências</h3>
@@ -856,6 +869,31 @@ const HISTORY_KEY = 'recheio_history';
 const CONSUMED_KEY = 'recheio_consumed';
 const STALE_DAYS = 4;
 const QUICK_ITEMS = ['ovo','leite','arroz','feijão','tomate','cebola','alho','queijo','manteiga','café'];
+
+// Preços médios aproximados (R$), do pacote/unidade típica de mercado — usados só pra estimativa, nunca vêm da IA
+const PRICE_TABLE = {
+  'ovo':12,'ovos':12,'leite':6,'arroz':22,'feijão':9,'feijao':9,'tomate':6,'cebola':5,'alho':4,
+  'queijo':25,'manteiga':12,'café':18,'cafe':18,'pão':8,'pao':8,'farinha':6,'açúcar':5,'acucar':5,
+  'óleo':8,'oleo':8,'sal':3,'macarrão':6,'macarrao':6,'batata':7,'cenoura':5,'frango':18,
+  'carne moída':30,'carne moida':30,'carne':35,'peixe':30,'banana':6,'maçã':8,'maca':8,'laranja':6,
+  'limão':5,'limao':5,'alface':4,'presunto':10,'mussarela':20,'iogurte':8,'chocolate':10,'fubá':5,
+  'fuba':5,'leite condensado':7,'creme de leite':5,'molho de tomate':5,'azeite':20,'pimentão':5,
+  'pimentao':5,'milho':4,'ervilha':4,'bacon':15,'linguiça':15,'linguica':15,'aveia':8,'mel':15,
+  'castanha':20,'chá':10,'cha':10
+};
+const DEFAULT_ITEM_PRICE = 8;
+
+function estimateItemPrice(name){
+  const key = (name || '').toLowerCase().trim();
+  if(PRICE_TABLE[key] !== undefined) return PRICE_TABLE[key];
+  const found = Object.keys(PRICE_TABLE).find(k => key.includes(k) || k.includes(key));
+  return found ? PRICE_TABLE[found] : DEFAULT_ITEM_PRICE;
+}
+
+function estimateMissingCost(missingArr){
+  if(!missingArr || missingArr.length === 0) return 0;
+  return missingArr.reduce((sum, name) => sum + estimateItemPrice(name), 0);
+}
 const STREAK_KEY = 'recheio_streak';
 const PLAN_LOG_KEY = 'recheio_planlog';
 const PREFS_KEY = 'recheio_prefs';
@@ -1475,6 +1513,60 @@ function closeCravingModal(){
   document.getElementById('cravingModalBg').classList.remove('open');
 }
 
+let currentBudget = null;
+
+function openBudgetModal(){
+  document.getElementById('budgetInput').value = '';
+  document.getElementById('budgetError').style.display = 'none';
+  document.getElementById('budgetModalBg').classList.add('open');
+}
+function closeBudgetModal(){
+  document.getElementById('budgetModalBg').classList.remove('open');
+}
+
+async function submitBudget(){
+  const budget = document.getElementById('budgetInput').value.trim();
+  const errBox = document.getElementById('budgetError');
+  if(!budget || Number(budget) <= 0){
+    errBox.textContent = 'Digita um valor válido.';
+    errBox.style.display = 'block';
+    return;
+  }
+  if(inventory.length === 0){
+    errBox.textContent = 'Adicione itens na geladeira primeiro, mesmo que poucos.';
+    errBox.style.display = 'block';
+    return;
+  }
+  errBox.style.display = 'none';
+  const btn = document.getElementById('budgetSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Buscando...';
+  try{
+    const itemNames = inventory.map(i => i.name + (i.qty ? ' (' + i.qty + ')' : '')).join(', ');
+    const peopleVal = document.getElementById('peopleInput') ? document.getElementById('peopleInput').value : '2';
+    const response = await fetch('/api/recipes', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ itemNames, excludeNames: [], diet: getDiet(), people: peopleVal, budget })
+    });
+    const data = await response.json();
+    if(!response.ok) throw new Error(data.error || 'Falha');
+    recipes = Array.isArray(data.recipes) ? data.recipes : [];
+    recipes.sort((a, b) => estimateMissingCost(a.missing) - estimateMissingCost(b.missing));
+    currentBudget = Number(budget);
+    document.getElementById('filterRow').style.display = recipes.length ? 'flex' : 'none';
+    renderRecipes();
+    closeBudgetModal();
+    switchTab('recipes');
+  }catch(e){
+    errBox.textContent = 'Não consegui buscar agora. Tenta de novo.';
+    errBox.style.display = 'block';
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Buscar receitas baratas';
+  }
+}
+
 async function submitCraving(){
   const craving = document.getElementById('cravingInput').value.trim();
   const errBox = document.getElementById('cravingError');
@@ -1525,13 +1617,7 @@ function homeGoQuick(){
   }
 }
 function homeGoCheap(){
-  switchTab('recipes');
-  const go = () => { setFilter('completa'); };
-  if(recipes.length === 0 && inventory.length > 0){
-    generateRecipes().then(go);
-  }else{
-    go();
-  }
+  openBudgetModal();
 }
 function homeGoWaste(){
   const expiring = getExpiringItems();
@@ -2685,7 +2771,9 @@ function renderRecipes(){
   list.innerHTML = shown.map((r, idx) => {
     const complete = !r.missing || r.missing.length === 0;
     const badge = complete ? '<span class="badge complete">já dá pra fazer</span>' : '<span class="badge missing">falta ' + r.missing.length + '</span>';
-    const missingLine = complete ? '' : '<p class="recipe-missing">Falta: ' + r.missing.map(escapeHtml).join(', ') + '</p>';
+    const estCost = complete ? 0 : estimateMissingCost(r.missing);
+    const costTag = complete ? '' : ' · <span style="color:var(--ink-soft);">~R$' + estCost + ' pra completar</span>';
+    const missingLine = complete ? '' : '<p class="recipe-missing">Falta: ' + r.missing.map(escapeHtml).join(', ') + costTag + '</p>';
     const waText = encodeURIComponent('Bora fazer "' + (r.name || '') + '" comigo? Achei essa receita no Recheio, usa ' + (r.uses ? r.uses.join(', ') : '') + '.');
     const waUrl = 'https://wa.me/?text=' + waText;
     const ifoodUrl = 'https://www.ifood.com.br/busca?q=' + encodeURIComponent(r.name || '');
