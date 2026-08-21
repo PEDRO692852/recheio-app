@@ -1420,11 +1420,15 @@ function renderHome(){
     heroHtml = '';
   }else if(expiring.length > 0){
     const names = expiring.slice(0, 3).map(i => i.name).join(', ');
-    heroHtml = '<button class="expiry-hero" onclick="switchTab(\'fridge\')">' +
+    heroHtml = '<div class="expiry-hero" style="cursor:default;">' +
       '<p class="expiry-hero-label">Precisa de atenção</p>' +
       '<p class="expiry-hero-title">' + expiring.length + (expiring.length === 1 ? ' item pedindo' : ' itens pedindo') + ' pra sair da geladeira</p>' +
       '<p class="expiry-hero-sub">' + escapeHtml(names) + '</p>' +
-    '</button>';
+      '<div style="display:flex; gap:16px; margin-top:10px;">' +
+        '<button onclick="generateSalvarGeladeira()" style="background:none; border:none; color:#fff; font-weight:600; font-size:12px; cursor:pointer; padding:0; text-decoration:underline;">Ver receitas com esses itens →</button>' +
+        '<button onclick="switchTab(\'fridge\')" style="background:none; border:none; color:rgba(255,255,255,0.8); font-size:12px; cursor:pointer; padding:0;">Ver geladeira</button>' +
+      '</div>' +
+    '</div>';
   }else{
     heroHtml = '<button class="expiry-hero calm" onclick="switchTab(\'fridge\')">' +
       '<p class="expiry-hero-label">Tudo em dia</p>' +
@@ -1530,8 +1534,46 @@ function homeGoCheap(){
   }
 }
 function homeGoWaste(){
-  switchTab('fridge');
+  const expiring = getExpiringItems();
+  if(expiring.length === 0){
+    switchTab('fridge');
+    showToast('Nada vencendo agora — sua geladeira está em dia! 🎉');
+    return;
+  }
+  generateSalvarGeladeira();
 }
+
+async function generateSalvarGeladeira(){
+  const expiring = getExpiringItems();
+  if(expiring.length === 0 || inventory.length === 0){
+    switchTab('fridge');
+    return;
+  }
+  switchTab('recipes');
+  clearError('recipeErrorBox');
+  document.getElementById('recipeList').innerHTML = skeletonCards(4);
+  document.getElementById('filterRow').style.display = 'none';
+
+  try{
+    const itemNames = inventory.map(i => i.name + (i.qty ? ' (' + i.qty + ')' : '')).join(', ');
+    const priorityItems = expiring.map(i => i.name);
+    const peopleVal = document.getElementById('peopleInput') ? document.getElementById('peopleInput').value : '2';
+    const response = await fetch('/api/recipes', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ itemNames, excludeNames: [], diet: getDiet(), people: peopleVal, priorityItems })
+    });
+    const data = await response.json();
+    if(!response.ok) throw new Error(data.error || 'Falha');
+    recipes = Array.isArray(data.recipes) ? data.recipes : [];
+    document.getElementById('filterRow').style.display = recipes.length ? 'flex' : 'none';
+    renderRecipes();
+    if(recipes.length > 0) showToast('Priorizando: ' + priorityItems.slice(0, 3).join(', ') + ' ♻️');
+  }catch(e){
+    showError('recipeErrorBox', 'Não consegui montar as receitas agora. Detalhe: ' + (e && e.message ? e.message : ''));
+  }
+}
+
 function homeGoSurprise(){
   switchTab('recipes');
   generateLazyRecipe();
