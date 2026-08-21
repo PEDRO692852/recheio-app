@@ -169,13 +169,19 @@
     border-color:var(--mustard);
     color:var(--mustard-dark);
   }
+  @keyframes cardIn{
+    from{opacity:0; transform:translateY(8px);}
+    to{opacity:1; transform:translateY(0);}
+  }
   .recipe-card{
     background:var(--cream);
     border-radius:16px;
     padding:14px 16px;
     margin-bottom:10px;
     color:var(--ink);
+    animation:cardIn 0.35s ease both;
   }
+  .item-row{animation:cardIn 0.3s ease both;}
   .recipe-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
   .recipe-name{font-family:'Fraunces',serif;font-size:16px;font-weight:500;margin:0;}
   .badge{
@@ -225,15 +231,18 @@
     margin-bottom:12px;
   }
   .modal-bg{
-    display:none;
     position:fixed;
     inset:0;
-    background:rgba(0,0,0,0.5);
+    background:rgba(0,0,0,0);
+    display:flex;
     align-items:flex-end;
     justify-content:center;
     z-index:10;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.25s ease, background 0.25s ease;
   }
-  .modal-bg.open{display:flex;}
+  .modal-bg.open{opacity:1; pointer-events:auto; background:rgba(0,0,0,0.5);}
   .modal{
     background:var(--cream);
     color:var(--ink);
@@ -241,6 +250,11 @@
     max-width:460px;
     border-radius:20px 20px 0 0;
     padding:20px;
+    transform:translateY(24px);
+    transition:transform 0.28s cubic-bezier(0.22,1,0.36,1);
+  }
+  .modal-bg.open .modal{
+    transform:translateY(0);
   }
   .modal h3{font-family:'Fraunces',serif;margin:0 0 14px;font-size:18px;}
   .modal input{
@@ -2365,7 +2379,7 @@ function renderWeekPlan(){
           '<div class="video-slot" id="planvideo-' + idx + '"><button class="recipe-toggle" onclick="loadSinglePlanVideo(' + idx + ')" id="planvideobtn-' + idx + '">▶ Carregar vídeo</button></div>' +
           '<div style="display:flex; gap:14px; align-items:center; padding-top:6px; flex-wrap:wrap;">' +
             '<button class="recipe-toggle" onclick="togglePlanRecipe(' + idx + ')" id="plantoggle-' + idx + '">Ver modo de preparo</button>' +
-            '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none;" href="' + ifoodUrl + '" target="_blank" rel="noopener">Pedir pronto no iFood</a>' +
+            '<a class="recipe-toggle" style="color:var(--teal-dark); text-decoration:none;" href="' + ifoodUrl + '" target="_blank" rel="noopener">Pedir pronto no iFood</a>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -2534,7 +2548,7 @@ function renderRecipes(){
           '<button class="recipe-toggle" onclick="shareToInstagram(' + idx + ')">Compartilhar no Insta</button>' +
         '</div>' +
         '<div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap;">' +
-          '<a class="recipe-toggle" style="color:var(--tomato-dark); text-decoration:none;" href="' + ifoodUrl + '" target="_blank" rel="noopener">Pedir pronto no iFood</a>' +
+          '<a class="recipe-toggle" style="color:var(--teal-dark); text-decoration:none;" href="' + ifoodUrl + '" target="_blank" rel="noopener">Pedir pronto no iFood</a>' +
           '<button class="recipe-toggle" onclick="copyRecipeName(' + idx + ')" id="copyname-' + idx + '">Copiar nome do prato</button>' +
           copyMissingBtn +
           subBtn +
