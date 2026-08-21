@@ -894,6 +894,17 @@ function estimateMissingCost(missingArr){
   if(!missingArr || missingArr.length === 0) return 0;
   return missingArr.reduce((sum, name) => sum + estimateItemPrice(name), 0);
 }
+
+function estimateCookingCost(r){
+  const all = [].concat(r.uses || [], r.missing || []);
+  if(all.length === 0) return 12;
+  return all.reduce((sum, name) => sum + estimateItemPrice(name), 0);
+}
+
+function estimateDeliveryPrice(r){
+  const base = 28 + Math.round((r.time_minutes || 20) / 10) * 3;
+  return Math.max(22, Math.min(55, base));
+}
 const STREAK_KEY = 'recheio_streak';
 const PLAN_LOG_KEY = 'recheio_planlog';
 const PREFS_KEY = 'recheio_prefs';
@@ -2319,7 +2330,7 @@ function saveHistory(){
   }
 }
 
-function markAsMade(name){
+function markAsMade(name, idx){
   const key = name.toLowerCase();
   if(!madeHistory[key]){
     madeHistory[key] = { count: 0, lastMade: null };
@@ -2328,7 +2339,16 @@ function markAsMade(name){
   madeHistory[key].lastMade = Date.now();
   saveHistory();
 
-  madeLog.push({ name, madeAt: Date.now() });
+  let delivery = null, cooking = null, savings = AVG_SAVINGS;
+  const r = (idx !== undefined && window.__shownRecipes) ? window.__shownRecipes[idx] : null;
+  if(r){
+    delivery = estimateDeliveryPrice(r);
+    cooking = estimateMissingCost(r.missing);
+    savings = Math.max(0, delivery - cooking);
+    showToast('Isso custaria ~R$' + delivery + ' no delivery — você gastou ~R$' + cooking + ' pra completar 🎉');
+  }
+
+  madeLog.push({ name, madeAt: Date.now(), delivery, cooking, savings });
   saveMadeLog();
   renderSavingsBanner();
 
@@ -2389,14 +2409,14 @@ function renderSavingsBanner(){
   const box = document.getElementById('savingsBanner');
   if(!box) return;
   const weekAgo = Date.now() - (7 * 86400000);
-  const count = madeLog.filter(m => m.madeAt >= weekAgo).length;
-  if(count === 0){
+  const recent = madeLog.filter(m => m.madeAt >= weekAgo);
+  if(recent.length === 0){
     box.style.display = 'none';
     return;
   }
-  const total = count * AVG_SAVINGS;
+  const total = recent.reduce((sum, m) => sum + (typeof m.savings === 'number' ? m.savings : AVG_SAVINGS), 0);
   box.style.display = 'block';
-  box.textContent = '💰 Você economizou cerca de R$' + total + ' essa semana cozinhando em vez de pedir (' + count + (count === 1 ? ' receita feita' : ' receitas feitas') + ')';
+  box.textContent = '💰 Você economizou cerca de R$' + Math.round(total) + ' essa semana cozinhando em vez de pedir (' + recent.length + (recent.length === 1 ? ' receita feita' : ' receitas feitas') + ')';
 }
 
 async function handleLeftoverPhoto(event){
@@ -2802,7 +2822,7 @@ function renderRecipes(){
         '<div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:6px;">' +
           '<button class="recipe-toggle" onclick="openCookMode(' + idx + ')">Modo mãos livres</button>' +
           '<a class="recipe-toggle" style="color:var(--teal-dark); text-decoration:none;" href="' + waUrl + '" target="_blank" rel="noopener">Chamar amigo</a>' +
-          '<button class="recipe-toggle" onclick="markAsMade(\'' + escapeHtml(r.name || '').replace(/'/g, "\\'") + '\')">Eu fiz essa</button>' +
+          '<button class="recipe-toggle" onclick="markAsMade(\'' + escapeHtml(r.name || '').replace(/'/g, "\\'") + '\', ' + idx + ')">Eu fiz essa</button>' +
           '<button class="recipe-toggle" onclick="shareToInstagram(' + idx + ')">Compartilhar no Insta</button>' +
         '</div>' +
         '<div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap;">' +
