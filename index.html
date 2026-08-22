@@ -610,6 +610,10 @@
       <button class="upload-btn" id="uploadBtn" onclick="document.getElementById('fileInput').click()">
         <i class="ti ti-camera"></i> Fotografar a geladeira
       </button>
+      <input type="file" id="receiptFileInput" accept="image/*" capture="environment" style="display:none;" onchange="handleReceiptPhoto(event)">
+      <button class="add-manual" id="receiptBtn" onclick="document.getElementById('receiptFileInput').click()">
+        <i class="ti ti-receipt"></i> Escanear recibo do mercado
+      </button>
       <button class="add-manual" onclick="openAddModal()">
         <i class="ti ti-plus"></i> Adicionar item manualmente
       </button>
@@ -2207,6 +2211,50 @@ function stopVoiceInput(){
   if(recognition){
     try{ recognition.stop(); }catch(e){}
     recognition = null;
+  }
+}
+
+async function handleReceiptPhoto(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  clearError('errorBox');
+  const btn = document.getElementById('receiptBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i> Lendo o recibo...';
+
+  try{
+    const base64 = await fileToBase64(file);
+    const response = await fetch('/api/read-receipt', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ image: base64, mediaType: file.type || 'image/jpeg' })
+    });
+    const data = await response.json();
+    if(!response.ok) throw new Error(data.error || 'Falha ao ler recibo');
+    const items = data.items || [];
+    if(!Array.isArray(items) || items.length === 0){
+      showError('errorBox', 'Não consegui identificar itens nesse recibo. Tente uma foto mais nítida, com o texto bem legível.');
+    }else{
+      if(currentHouseholdId){
+        const rows = items.filter(it => it.name).map(it => ({ household_id: currentHouseholdId, name: it.name, qty: it.qty || '', location: 'geladeira', added_by: currentUser.id }));
+        if(rows.length) await sbClient.from('fridge_items').insert(rows);
+        await loadHouseholdItems();
+      }else{
+        const now = Date.now();
+        items.forEach(it => {
+          if(it.name) inventory.push({name: it.name, qty: it.qty || '', addedAt: now, location: 'geladeira'});
+        });
+        await saveInventory();
+        renderInventory();
+      }
+      showToast(items.length + ' itens do recibo adicionados ✓');
+    }
+  }catch(e){
+    showError('errorBox', 'Não consegui ler o recibo agora. Tente de novo.');
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-receipt"></i> Escanear recibo do mercado';
+    event.target.value = '';
   }
 }
 
